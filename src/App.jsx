@@ -8,8 +8,8 @@ import Dashboard from './pages/Dashboard';
 import TransactionPage from './pages/TransactionPage';
 import StatisticsPage from './pages/StatisticsPage'; 
 import HistoryPage from './pages/HistoryPage';
-import SettingsPage from './pages/SettingsPage'; // Import halaman utama settings yang pertama
-import ProfilePage from './pages/ProfilePage';   // Import halaman profile edit yang kedua
+import SettingsPage from './pages/SettingsPage';
+import ProfilePage from './pages/ProfilePage';
 
 function App() {
   // State global untuk pendapatan/saldo utama
