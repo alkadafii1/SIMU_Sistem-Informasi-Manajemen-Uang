@@ -1,6 +1,9 @@
 const bcrypt = require('bcrypt');
+const { OAuth2Client } = require('google-auth-library');
 const { users } = require('../storage/memory');
 const { generateToken } = require('../utils/jwt');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // REGISTER
 const register = async (req, res, next) => {
@@ -111,29 +114,45 @@ const getMe = async (req, res, next) => {
 // GOOGLE LOGIN
 const googleLogin = async (req, res, next) => {
   try {
-    const { email, name, googleId } = req.body;
-    if (!email) {
-      const error = new Error('Email dari Google wajib ada');
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      const error = new Error('ID token tidak ditemukan');
       error.statusCode = 400;
       throw error;
     }
 
+    // Verifikasi token dengan Google
+    const ticket = await googleClient.verifyIdToken({
+      idToken: idToken,
+      audience: process.env.GOOGLE_CLIENT_ID, // harus sama dengan Client ID frontend
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, sub: googleId } = payload;
+
+    // Cari user berdasarkan email
     let user = users.find(u => u.email === email);
+
     if (!user) {
+      // Buat user baru jika belum ada (password dummy karena login via Google)
       const dummyPassword = await bcrypt.hash('google-oauth-' + Date.now(), 10);
       const newUser = {
         id: users.length + 1,
         name: name || email.split('@')[0],
-        email,
+        email: email,
         passwordHash: dummyPassword,
-        googleId: googleId || null,
+        googleId: googleId,
         createdAt: new Date().toISOString()
       };
       users.push(newUser);
       user = newUser;
       console.log('✅ User baru dari Google:', user.email);
     } else {
-      if (googleId && !user.googleId) user.googleId = googleId;
+      // Update googleId jika belum ada
+      if (googleId && !user.googleId) {
+        user.googleId = googleId;
+      }
       console.log('🔁 User sudah ada (Google):', user.email);
     }
 
@@ -141,12 +160,18 @@ const googleLogin = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Login dengan Google berhasil',
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      },
       token
     });
   } catch (error) {
+    console.error('Google login error:', error);
     next(error);
   }
 };
+
 
 module.exports = { register, login, getMe, googleLogin };
