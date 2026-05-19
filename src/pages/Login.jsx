@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import api from '../services/api'; 
 
 function Login() {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ function Login() {
   useEffect(() => {
     // Memeriksa jika perpindahan berasal dari Register dengan membawa status sukses
     if (location.state && location.state.fromRegister && location.state.email) {
-      setTypedEmail(location.state.email); // Auto-fill kolom input email
+      setTypedEmail(location.state.email);
       setShowSuccessPopup(true);
       
       // Sembunyikan pop-up sukses otomatis setelah 5 detik
@@ -26,54 +27,68 @@ function Login() {
     }
   }, [location.state]);
 
-  // 🔑 Handle untuk Tombol MASUK Manual
-  const handleManualLogin = (e) => {
+  const isValidEmail = (email) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+  // Handle manual login
+  const handleManualLogin = async (e) => {
     e.preventDefault();
     setLoginError(false);
-    
-    // Validasi input sederhana
-    if (typedEmail && typedPassword.length >= 6) {
-      setIsLoggingIn(true);
-      
-      // Simulasi loading autentikasi selama 1.5 detik
-      setTimeout(() => {
-        setIsLoggingIn(false);
+    setIsLoggingIn(true);
 
-        // 🔗 1. EKSTRAKSI NAMA DARI EMAIL (Contoh: celvin@email.com -> Celvin)
-        // Jika input berupa email, kita ambil bagian depan lalu kapitalisasi huruf pertamanya
-        let username = typedEmail.split('@')[0];
-        username = username.charAt(0).toUpperCase() + username.slice(1);
+    try {
+      const response = await api.post('/auth/login', {
+        email: typedEmail,
+        password: typedPassword
+      });
 
-        // 💾 2. SIMPAN DATA KE LOCALSTORAGE AGAR DIBACA DASHBOARD
-        localStorage.setItem('user_name', username);
-        localStorage.setItem('user_email', typedEmail.includes('@') ? typedEmail : `${typedEmail}@email.com`);
-        
-        // 🔗 DIHUBUNGKAN LANGSUNG KE HALAMAN SETUP PENDAPATAN & TUJUAN
-        navigate('/setup-financial'); 
-      }, 1500);
-    } else {
+      if (response.data.success) {
+        const { user, token } = response.data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('user_name', user.name);
+        localStorage.setItem('user_email', user.email);
+        navigate('/setup-financial');
+      }
+    } catch (error) {
       setLoginError(true);
       setTimeout(() => setLoginError(false), 3000);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  // 🔑 Handle untuk Tombol LOGIN WITH GOOGLE
-  const handleGoogleLogin = () => {
-    console.log("Menghubungkan ke Google Auth API...");
+  // Handle untuk Tombol LOGIN WITH GOOGLE
+  const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
-    
-    // Simulasi loading penanganan login Google selama 1.5 detik
-    setTimeout(() => {
-      setIsLoggingIn(false);
-      
-      // 💾 SIMPAN DATA DUMMY GOOGLE KE LOCALSTORAGE
-      // Jika nanti sudah pakai Real API, isi ini dengan response dari Google Auth
-      localStorage.setItem('user_name', 'Celvin Alfiansyah');
-      localStorage.setItem('user_email', 'celvin.alfiansyah@gmail.com');
+    try {
+      if (!isValidEmail(typedEmail)) {
+        setLoginError(true);
+        setTimeout(() => setLoginError(false), 3000);
+        setIsLoggingIn(false);
+        return;
+      }
+      const googleUser = {
+        email: 'celvin.alfiansyah@gmail.com',
+        name: 'Celvin Alfiansyah',
+        googleId: '1234567890'
+      };
 
-      // 🔗 DIHUBUNGKAN LANGSUNG KE HALAMAN SETUP PENDAPATAN & TUJUAN
-      navigate('/setup-financial');
-    }, 1500);
+      const response = await api.post('/auth/google', googleUser);
+
+      if (response.data.success) {
+        const { user, token } = response.data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('user_name', user.name);
+        localStorage.setItem('user_email', user.email);
+        navigate('/setup-financial');
+      }
+    } catch (error) {
+      console.error('Login error:', error.response?.data || error.message);
+      setLoginError(true);
+      setTimeout(() => setLoginError(false), 3000);
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   return (
