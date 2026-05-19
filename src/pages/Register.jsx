@@ -1,39 +1,60 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 function Register() {
   const navigate = useNavigate();
   
-  // State untuk menangkap input formulir
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-
-  // Skenario State untuk sembunyikan/tampilkan password
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validasi sederhana jika data belum diisi
+    setErrorMsg('');
+
+    // Validasi frontend
     if (!name || !email || !password) {
-      alert("Silakan isi semua data terlebih dahulu.");
+      setErrorMsg('Silakan isi semua data terlebih dahulu.');
       return;
     }
-
     if (password !== confirmPassword) {
-      alert("Konfirmasi password tidak cocok!");
+      setErrorMsg('Konfirmasi password tidak cocok!');
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg('Password minimal 6 karakter.');
       return;
     }
 
-    // Mengarahkan ke /login sambil mengirimkan state sukses registrasi
-    navigate('/login', { 
-      state: { 
-        fromRegister: true, 
-        email: email 
-      } 
-    });
+    setIsLoading(true);
+
+    try {
+      const response = await api.post('/auth/register', {
+        name,
+        email,
+        password,
+      });
+
+      if (response.data.success) {
+        // Simpan token dan data user (opsional: langsung login)
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user_name', response.data.user.name);
+        localStorage.setItem('user_email', response.data.user.email);
+
+        // Arahkan ke halaman setup pendapatan (atau ke login dengan pesan sukses)
+        navigate('/setup-financial');
+      }
+    } catch (err) {
+      const message = err.response?.data?.message || 'Registrasi gagal. Coba lagi.';
+      setErrorMsg(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -49,7 +70,6 @@ function Register() {
         }
       `}</style>
 
-      {/* Header Section */}
       <header className="w-full max-w-[1200px] flex justify-between items-center px-4 md:px-8 py-4">
         <button 
           onClick={() => navigate('/login')}
@@ -63,10 +83,9 @@ function Register() {
         <div className="w-10"></div>
       </header>
 
-      {/* Main Content Area */}
       <main className="flex-grow w-full max-w-[1200px] px-4 md:px-8 py-10 flex flex-col md:flex-row items-center justify-center gap-10">
         
-        {/* Branding Side (Desktop Only) */}
+        {/* Branding Side */}
         <div className="hidden md:flex flex-col w-1/2 space-y-6">
           <h1 className="text-[40px] font-bold text-[#00685f] max-w-md leading-[48px] tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
             Wujudkan Masa Depan Finansial yang Lebih Cerah.
@@ -94,10 +113,16 @@ function Register() {
             </p>
           </div>
 
+          {errorMsg && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
+              {errorMsg}
+            </div>
+          )}
+
           <form className="space-y-6" onSubmit={handleRegisterSubmit}>
-            {/* Full Name Field */}
+            {/* Nama Lengkap */}
             <div className="space-y-2">
-              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="name" style={{ fontFamily: 'Inter, sans-serif' }}>
+              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="name">
                 Nama Lengkap
               </label>
               <div className="relative">
@@ -109,14 +134,13 @@ function Register() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="John Doe" 
                   className="w-full pl-12 pr-4 py-3 bg-[#f0f3ff] border border-[#bcc9c6]/30 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#00685f]/20 focus:border-[#00685f] transition-all"
-                  style={{ fontFamily: 'Inter, sans-serif' }}
                 />
               </div>
             </div>
 
-            {/* Email Field */}
+            {/* Email */}
             <div className="space-y-2">
-              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="email" style={{ fontFamily: 'Inter, sans-serif' }}>
+              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="email">
                 Email
               </label>
               <div className="relative">
@@ -128,14 +152,13 @@ function Register() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="nama@email.com" 
                   className="w-full pl-12 pr-4 py-3 bg-[#f0f3ff] border border-[#bcc9c6]/30 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#00685f]/20 focus:border-[#00685f] transition-all"
-                  style={{ fontFamily: 'Inter, sans-serif' }}
                 />
               </div>
             </div>
 
-            {/* Password Field dengan Fitur Ikon Mata */}
+            {/* Password */}
             <div className="space-y-2">
-              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="password" style={{ fontFamily: 'Inter, sans-serif' }}>
+              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="password">
                 Password
               </label>
               <div className="relative">
@@ -147,9 +170,7 @@ function Register() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••" 
                   className="w-full pl-12 pr-12 py-3 bg-[#f0f3ff] border border-[#bcc9c6]/30 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#00685f]/20 focus:border-[#00685f] transition-all"
-                  style={{ fontFamily: 'Inter, sans-serif' }}
                 />
-                {/* Tombol Interaktif Pengubah Tipe Input */}
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)}
@@ -162,9 +183,9 @@ function Register() {
               </div>
             </div>
 
-            {/* Confirm Password Field */}
+            {/* Konfirmasi Password */}
             <div className="space-y-2">
-              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="confirm-password" style={{ fontFamily: 'Inter, sans-serif' }}>
+              <label className="block text-xs font-medium text-[#3d4947] px-1" htmlFor="confirm-password">
                 Konfirmasi Password
               </label>
               <div className="relative">
@@ -176,12 +197,11 @@ function Register() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••" 
                   className="w-full pl-12 pr-4 py-3 bg-[#f0f3ff] border border-[#bcc9c6]/30 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#00685f]/20 focus:border-[#00685f] transition-all"
-                  style={{ fontFamily: 'Inter, sans-serif' }}
                 />
               </div>
             </div>
 
-            {/* Terms and Conditions */}
+            {/* Terms */}
             <div className="flex items-start gap-2 py-2">
               <input 
                 id="terms"
@@ -189,24 +209,22 @@ function Register() {
                 required
                 className="mt-1 w-5 h-5 rounded border-[#bcc9c6] text-[#00685f] focus:ring-[#00685f] cursor-pointer accent-[#00685f]" 
               />
-              <label htmlFor="terms" className="text-sm text-[#3d4947] cursor-pointer leading-tight" style={{ fontFamily: 'Inter, sans-serif' }}>
+              <label htmlFor="terms" className="text-sm text-[#3d4947] cursor-pointer leading-tight">
                 Saya menyetujui <span className="text-[#00685f] font-semibold hover:underline">Syarat dan Ketentuan</span> serta <span className="text-[#00685f] font-semibold hover:underline">Kebijakan Privasi</span> WealthFlow.
               </label>
             </div>
 
-            {/* Primary CTA Button */}
             <button 
               type="submit"
-              className="w-full py-4 bg-[#00685f] text-white font-semibold text-lg rounded-xl shadow-[0px_4px_12px_rgba(0,104,95,0.2)] hover:bg-[#005049] transition-all active:scale-[0.98] duration-200 cursor-pointer"
-              style={{ fontFamily: 'Manrope, sans-serif' }}
+              disabled={isLoading}
+              className="w-full py-4 bg-[#00685f] text-white font-semibold text-lg rounded-xl shadow-[0px_4px_12px_rgba(0,104,95,0.2)] hover:bg-[#005049] transition-all active:scale-[0.98] duration-200 cursor-pointer disabled:opacity-50"
             >
-              Daftar
+              {isLoading ? 'Memproses...' : 'Daftar'}
             </button>
           </form>
 
-          {/* Footer Link */}
           <div className="mt-10 text-center">
-            <p className="text-base text-[#55615f]" style={{ fontFamily: 'Inter, sans-serif' }}>
+            <p className="text-base text-[#55615f]">
               Sudah punya akun? 
               <button 
                 onClick={() => navigate('/login')}
