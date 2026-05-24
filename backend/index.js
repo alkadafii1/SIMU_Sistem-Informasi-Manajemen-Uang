@@ -7,6 +7,7 @@ const transactionsRoutes = require('./routes/transactions');
 const monthlyRoutes = require('./routes/monthly');
 const rolloverRoutes = require('./routes/rollover');
 const aiRoutes = require('./routes/ai');
+const userRoutes = require('./routes/user');
 const errorHandler = require('./middleware/errorHandler');
 
 
@@ -29,6 +30,7 @@ app.use('/api', transactionsRoutes);
 app.use('/api', monthlyRoutes);
 app.use('/api', rolloverRoutes);
 app.use('/api', aiRoutes);
+app.use('/api', userRoutes);
 app.use('/api', authRoutes);
 
 // Health check

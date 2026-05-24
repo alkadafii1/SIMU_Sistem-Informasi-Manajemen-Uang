@@ -114,6 +114,7 @@ const getMe = async (req, res, next) => {
 // GOOGLE LOGIN
 const googleLogin = async (req, res, next) => {
   try {
+    console.log('Request body:', req.body);
     const { idToken } = req.body;
 
     if (!idToken) {
@@ -125,7 +126,7 @@ const googleLogin = async (req, res, next) => {
     // Verifikasi token dengan Google
     const ticket = await googleClient.verifyIdToken({
       idToken: idToken,
-      audience: process.env.GOOGLE_CLIENT_ID, // harus sama dengan Client ID frontend
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
