@@ -1,341 +1,453 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import api from '../services/api';
+import Sidebar from '../components/Sidebar';
 
-function Dashboard({ monthlyIncome, setMonthlyIncome, customPct, userSelectedGoals, transactions }) {
+function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  
 
   const [showWelcomePopup, setShowWelcomePopup] = useState(false);
-  const [userData, setUserData] = useState({
-    name: 'Celvin Alfiansyah',
-    email: 'celvin@email.com'
-  });
-  const [userAvatar, setUserAvatar] = useState(null); // Tambahan state untuk menyimpan foto profil
+  const [userData, setUserData] = useState({ name: '', email: '' });
+  const [userAvatar, setUserAvatar] = useState(null);
+  const [setup, setSetup] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dailyBudget, setDailyBudget] = useState(0);
+  const [weeklyExpenses, setWeeklyExpenses] = useState([0, 0, 0, 0, 0, 0, 0]);
 
+  // Ambil data user dari localStorage
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
-    const storedAvatar = localStorage.getItem('user_avatar'); // Ambil foto profil dari localStorage
-    
-    if (storedName || storedEmail) {
-      setUserData({
-        name: storedName || 'Celvin Alfiansyah',
-        email: storedEmail || 'celvin@email.com'
-      });
-    }
+    const storedAvatar = localStorage.getItem('user_avatar');
+    setUserData({
+      name: storedName || 'Pengguna',
+      email: storedEmail || 'email@example.com',
+    });
+    if (storedAvatar) setUserAvatar(storedAvatar);
+  }, []);
 
-    if (storedAvatar) {
-      setUserAvatar(storedAvatar); // Set ke state jika foto ditemukan
-    }
+  // Fetch data setup dan transaksi
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [setupRes, transRes] = await Promise.all([
+          api.get('/user/setup'),
+          api.get('/transactions'),
+        ]);
+        const userSetup = setupRes.data.setup;
+        setSetup(userSetup);
+        const allTransactions = transRes.data.transactions || [];
 
+        const totalIncomeAmount = allTransactions
+          .filter((t) => t.type === 'income')
+          .reduce((sum, t) => sum + t.amount, 0);
+        const totalExpenseAmount = allTransactions
+          .filter((t) => t.type === 'expense')
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        const sortedTransactions = [...allTransactions].sort((a, b) => 
+          new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+        );
+        setTransactions(sortedTransactions);
+
+        const income = userSetup.income;
+        const remaining = (income + totalIncomeAmount) - totalExpenseAmount;
+        const daysLeft = 30 - new Date().getDate();
+        setDailyBudget(daysLeft > 0 ? remaining / daysLeft : remaining);
+
+        const now = new Date();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        const weekExp = [0, 0, 0, 0, 0, 0, 0];
+        allTransactions.forEach((tx) => {
+          if (tx.type === 'expense') {
+            const txDate = new Date(tx.date);
+            if (txDate >= startOfWeek && txDate <= now) {
+              const dayIndex = txDate.getDay();
+              weekExp[dayIndex] += tx.amount;
+            }
+          }
+        });
+        setWeeklyExpenses(weekExp);
+      } catch (error) {
+        console.error('Gagal fetch dashboard:', error);
+        if (error.response?.status === 404) {
+          navigate('/setup-financial');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [location, navigate]);
+
+  // Popup welcome jika baru dari setup
+  useEffect(() => {
     if (location.state?.fromSetup) {
       setShowWelcomePopup(true);
-      const timer = setTimeout(() => setShowWelcomePopup(false), 5000); 
-      return () => clearTimeout(timer);
+      setTimeout(() => setShowWelcomePopup(false), 5000);
     }
   }, [location.state]);
-
-  // Mengambil persentase alokasi dinamis dari SetupFinancial melalui props
-  const pctKebutuhan = customPct?.kebutuhan ?? 50;
-  const pctKeinginan = customPct?.keinginan ?? 30;
-  const pctTabungan = customPct?.tabungan ?? 20;
-
-  // Hitung nominal uang dinamis berdasarkan props global
-  const kebutuhan = (monthlyIncome * pctKebutuhan) / 100;
-  const keinginan = (monthlyIncome * pctKeinginan) / 100;
-  const tabungan = (monthlyIncome * pctTabungan) / 100;
-
-  // Rumus hitung persentase stroke dasharray keliling lingkaran SVG sesuai SetupFinancial
-  const strokeKebutuhan = pctKebutuhan;
-  const strokeKeinginan = pctKeinginan;
-  const strokeTabungan = pctTabungan;
-
-  const offsetKebutuhan = 0;
-  const offsetKeinginan = -strokeKebutuhan;
-  const offsetTabungan = -(strokeKebutuhan + strokeKeinginan);
 
   const formatRupiah = (angka) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
     }).format(angka);
   };
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
 
-  // Daftar lengkap target tabungan yang disinkronkan dengan preferensi userSelectedGoals dari SetupFinancial
-  const allGoals = [
-    { id: 'rumah', label: 'Beli Rumah Impian', icon: 'home', progress: '0% Terkumpul', target: formatRupiah(500000000) },
-    { id: 'mobil', label: 'Beli Mobil Baru', icon: 'directions_car', progress: '0% Terkumpul', target: formatRupiah(150000000) },
-    { id: 'liburan', label: 'Liburan ke Jepang', icon: 'flight', progress: '0% Terkumpul', target: formatRupiah(25000000) },
-    { id: 'gadget', label: 'Upgrade Gadget & PC', icon: 'laptop_mac', progress: '0% Terkumpul', target: formatRupiah(15000000) },
-    { id: 'darurat', label: 'Dana Darurat Utama', icon: 'health_and_safety', progress: '0% Terkumpul', target: formatRupiah(10000000) },
-  ];
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-[#f9f9ff]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00685f]"></div>
+      </div>
+    );
+  }
+
+  if (!setup) return null;
+
+  const { income, allocation } = setup;
+  const pctKebutuhan = allocation.kebutuhan;
+  const pctKeinginan = allocation.keinginan;
+  const pctTabungan = allocation.tabungan;
+  const budgetNeeds = (income * pctKebutuhan) / 100;
+  const budgetWants = (income * pctKeinginan) / 100;
+  const budgetSavings = (income * pctTabungan) / 100;
+
+  const totalExpense = transactions
+    .filter((t) => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const totalIncomeAmount = transactions
+    .filter((t) => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const totalEffectiveIncome = income + totalIncomeAmount;
+  const remainingBudget = totalEffectiveIncome - totalExpense;
+  const savingsAchieved = remainingBudget;
+
+  // Kategori untuk Needs dan Wants
+  const needsCategories = ['Makanan & Minuman', 'Belanja Harian', 'Transportasi', 'Tagihan & Utilitas', 'Kesehatan', 'Pendidikan', 'Sewa', 'Cicilan'];
+  const wantsCategories = ['Hiburan & Hobi', 'Makan di Luar', 'Belanja', 'Olahraga', 'Lainnya'];
+
+  const totalExpenseNeeds = transactions
+    .filter((t) => t.type === 'expense' && needsCategories.includes(t.category))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const totalExpenseWants = transactions
+    .filter((t) => t.type === 'expense' && wantsCategories.includes(t.category))
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Realisasi persentase terhadap budget masing-masing
+  const needsUsedPercent = budgetNeeds > 0 ? (totalExpenseNeeds / budgetNeeds) * 100 : 0;
+  const wantsUsedPercent = budgetWants > 0 ? (totalExpenseWants / budgetWants) * 100 : 0;
+  const savingsPercent = budgetSavings > 0 ? (savingsAchieved / budgetSavings) * 100 : 0;
+
+  // Donut chart untuk alokasi ideal
+  const donutValues = [pctKebutuhan, pctKeinginan, pctTabungan];
+  const donutColors = ['#00685f', '#66b5ad', '#b3d9d5'];
+  let cumulativeOffset = 0;
+  const donutSegments = donutValues.map((value) => {
+    const dashArray = value;
+    const offset = cumulativeOffset;
+    cumulativeOffset += dashArray;
+    return { dashArray, offset };
+  });
+
+  // Top kategori pengeluaran (3 terbesar)
+  const expenseByCategory = transactions
+    .filter((t) => t.type === 'expense')
+    .reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      return acc;
+    }, {});
+  const topCategories = Object.entries(expenseByCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  const categoryColors = ['#00685f', '#66b5ad', '#b3d9d5'];
+
+  // Hitung total untuk donut kategori (sum dari topCategories)
+  const totalTopCategories = topCategories.reduce((sum, [, amount]) => sum + amount, 0);
+  let catCumulativeOffset = 0;
+  const categoryDonutSegments = topCategories.map(([, amount], idx) => {
+    const percent = totalTopCategories > 0 ? (amount / totalTopCategories) * 100 : 0;
+    const dashArray = percent;
+    const offset = catCumulativeOffset;
+    catCumulativeOffset += dashArray;
+    return { dashArray, offset, color: categoryColors[idx % categoryColors.length], category: topCategories[idx][0], amount };
+  });
+
+  // Grafik mingguan
+  const maxWeekly = Math.max(...weeklyExpenses, 1);
+  const weeklyHeights = weeklyExpenses.map((val) => (val / maxWeekly) * 60);
+  const weekDays = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 
   return (
-    <div className="bg-[#f9f9ff] text-[#151c27] h-screen flex overflow-hidden font-sans antialiased">
+    <div className="bg-[#f9f9ff] text-[#151c27] min-h-screen flex flex-col md:flex-row font-sans antialiased">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
-        
         .material-symbols-outlined {
           font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
           display: inline-block;
           line-height: 1;
           vertical-align: middle;
         }
-
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
-      {/* Pop-up Notifikasi Berhasil */}
       {showWelcomePopup && (
-        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[60] bg-[#00685f] text-white px-6 py-4 rounded-2xl shadow-[0px_10px_30px_rgba(0,104,95,0.3)] flex items-center gap-3 font-semibold text-sm border border-[#008378] animate-bounce">
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-          <span>Strategi Finansial Berhasil Diterapkan Ke Akunmu!</span>
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 font-semibold text-sm animate-bounce">
+          <span className="material-symbols-outlined">check_circle</span>
+          <span>Strategi Finansial Berhasil Diterapkan!</span>
         </div>
       )}
 
-      {/* SISI KIRI: SIDEBAR LAYOUT */}
-      <aside className="w-64 bg-white border-r border-slate-100 flex flex-col justify-between p-6 h-full flex-shrink-0 hidden md:flex">
-        <div className="space-y-8">
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-9 h-9 rounded-xl bg-[#00685f] flex items-center justify-center text-white shadow-xs">
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance_wallet</span>
+      <Sidebar userData={userData} userAvatar={userAvatar} userInitial={userInitial}/>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white/80 backdrop-blur-md px-4 py-3 md:px-8 md:py-4 flex justify-between items-center border-b border-slate-100 sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <div className="md:hidden w-9 h-9 rounded-full bg-[#d8e5e2] flex items-center justify-center font-bold text-[#00685f]">
+              {userInitial}
             </div>
-            <span className="text-xl font-extrabold text-[#00685f] tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>WealthFlow</span>
+            <div>
+              <h1 className="text-xl font-bold text-[#00685f]" style={{ fontFamily: 'Manrope, sans-serif' }}>WealthFlow</h1>
+              <p className="text-xs text-slate-400 hidden md:block">Ringkasan finansialmu</p>
+            </div>
           </div>
-
-          <nav className="space-y-1.5">
-            <button onClick={() => navigate('/dashboard')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl bg-[#00685f]/10 text-[#00685f] font-semibold text-sm border-none cursor-pointer text-left">
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>dashboard</span>
-              <span>Dashboard</span>
-            </button>
-            <button onClick={() => navigate('/statistics')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm border-none cursor-pointer text-left transition-all">
-              <span className="material-symbols-outlined">analytics</span>
-              <span>Statistik Analisis</span>
-            </button>
-            <button onClick={() => navigate('/history')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm border-none cursor-pointer text-left transition-all">
-              <span className="material-symbols-outlined">receipt_long</span>
-              <span>Riwayat Aktivitas</span>
-            </button>
-            <button onClick={() => navigate('/transaction')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm border-none cursor-pointer text-left transition-all">
-              <span className="material-symbols-outlined">payments</span>
-              <span>Target Tabungan</span>
-            </button>
-            <button onClick={() => navigate('/settings')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm border-none cursor-pointer text-left transition-all">
-              <span className="material-symbols-outlined">settings</span>
-              <span>Pengaturan</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* BAGIAN FOTO PROFIL SIDEBAR DESKTOP */}
-        <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden border border-[#00685f]/20 bg-[#d8e5e2] flex items-center justify-center font-bold text-[#00685f] flex-shrink-0">
-            {userAvatar ? (
-              <img src={userAvatar} className="w-full h-full object-cover" alt="avatar" />
-            ) : (
-              userInitial
-            )}
-          </div>
-          <div className="flex flex-col text-left overflow-hidden">
-            <span className="text-xs font-bold text-slate-800 truncate">{userData.name}</span>
-            <span className="text-[10px] text-slate-400 font-medium truncate">{userData.email}</span>
-          </div>
-        </div>
-      </aside>
-
-      {/* SISI KANAN: UTAMA HALAMAN KONTEN */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        
-        {/* TOP BAR / HEADER */}
-        <header className="bg-white/80 backdrop-blur-md px-8 py-4 flex items-center justify-between border-b border-slate-100 z-20 flex-shrink-0">
-          <div className="flex flex-col text-left">
-            <h2 className="text-xl font-bold text-slate-800 tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>Ringkasan Finansial</h2>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Strategi budgeting bulananmu</p>
-          </div>
-          
-          <button 
-            onClick={() => navigate('/transaction')}
-            className="flex items-center gap-2 bg-[#00685f] hover:bg-[#005049] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-[0px_4px_12px_rgba(0,104,95,0.15)] transition-all active:scale-95 border-none cursor-pointer"
-          >
+          <button onClick={() => navigate('/transaction')} className="flex items-center gap-2 bg-[#00685f] text-white px-3 py-2 md:px-4 md:py-2.5 rounded-xl text-xs font-bold shadow-md transition-all active:scale-95">
             <span className="material-symbols-outlined text-sm">add</span>
-            <span>Catat Transaksi</span>
+            <span className="hidden md:inline">Catat Transaksi</span>
           </button>
         </header>
 
-        {/* WORKSPACE AREA */}
-        <main className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
-          
-          {/* HERO GRID NOMINAL UANG */}
-          <div className="w-full">
-            <div className="bg-[#008378] rounded-3xl p-8 flex flex-col justify-between shadow-[0px_4px_20px_rgba(0,0,0,0.01)] relative overflow-hidden group">
-              <div className="space-y-2 text-left relative z-10">
-                <span className="text-xs font-bold text-[#ffffff] uppercase tracking-wider">Total Anggaran Bulanan Utama</span>
-                <h3 className="text-4xl font-extrabold text-[#ffffff] tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                  {formatRupiah(monthlyIncome)}
-                </h3>
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-5 md:space-y-8 no-scrollbar">
+          {/* Tiga kartu ringkasan */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+              <div className="text-xs text-slate-400 font-semibold">TOTAL PEMASUKAN</div>
+              <div className="text-2xl font-extrabold text-slate-800 mt-1">{formatRupiah(totalEffectiveIncome)}</div>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+              <div className="text-xs text-slate-400 font-semibold">TOTAL PENGELUARAN</div>
+              <div className="text-2xl font-extrabold text-slate-800 mt-1">{formatRupiah(totalExpense)}</div>
+              <div className="text-xs text-amber-600 mt-2">
+                Sisa limit anggaran {formatRupiah(income - totalExpense)}
               </div>
-              <div className="flex items-center justify-between mt-6 relative z-10 border-t border-slate-50 pt-4">
-                <span className="text-xs font-semibold text-[#ffffff]">Arus Kas Dompet Aktif Terintegrasi</span>
-                <div className="w-9 h-9 rounded-xl bg-[#00685f]/5 flex items-center justify-center text-[#00685f]">
-                  <span className="material-symbols-outlined text-[#ffffff]">account_balance</span>
-                </div>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+              <div className="text-xs text-slate-400 font-semibold">TABUNGAN</div>
+              <div className="text-2xl font-extrabold text-slate-800 mt-1">{formatRupiah(Math.max(0, savingsAchieved))}</div>
+              <div className="text-xs text-emerald-600 mt-2">
+                Mencapai {savingsPercent.toFixed(0)}% dari target bulan ini
               </div>
             </div>
           </div>
 
-          {/* ROW 2: GRAPHICS & TARGET PROGRESS MAP */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            {/* COLUMN LEFT (SPAN 7): PIE CHART CONTAINER */}
-            <div className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.01)]">
-              <div className="flex flex-col text-left mb-6">
-                <h3 className="font-bold text-base text-slate-800 tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>Proporsi Alokasi Anggaran</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Rasio pembagian berdasarkan preferensi setup kamu</p>
+          {/* Rekomendasi Harian */}
+          <div className="bg-white rounded-xl p-4 flex gap-3 border border-slate-100 shadow-sm">
+            <span className="material-symbols-outlined text-[#00685f]">lightbulb</span>
+            <div>
+              <div className="text-[10px] font-bold text-[#00685f] uppercase tracking-wide">Rekomendasi Harian</div>
+              <div className="text-xs text-slate-600 font-medium">
+                Batas belanja hari ini: <strong>{formatRupiah(Math.max(0, dailyBudget))}</strong>
               </div>
+            </div>
+          </div>
 
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-8 py-2">
-                
-                {/* Lingkaran Donut SVG */}
-                <div className="relative w-40 h-40 flex items-center justify-center flex-shrink-0">
+          {/* Dua Kolom: Alokasi Anggaran (Kiri) + Kategori Pengeluaran (Kanan) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Kolom Kiri: Alokasi Anggaran (Donut + Progress Bars) */}
+            <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+              <div className="text-sm font-bold text-slate-800 mb-4">Alokasi {pctKebutuhan}/{pctKeinginan}/{pctTabungan}</div>
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                {/* Donut Chart */}
+                <div className="relative w-28 h-28 flex-shrink-0 mx-auto sm:mx-0">
                   <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#334A43" strokeWidth="4.5" strokeDasharray={`${strokeKebutuhan} 100`} strokeDashoffset={offsetKebutuhan} strokeLinecap="round"/>
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#566C63" strokeWidth="4.5" strokeDasharray={`${strokeKeinginan} 100`} strokeDashoffset={offsetKeinginan} strokeLinecap="round"/>
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#A2B097" strokeWidth="4.5" strokeDasharray={`${strokeTabungan} 100`} strokeDashoffset={offsetTabungan} strokeLinecap="round"/>
+                    {donutSegments.map((seg, idx) => (
+                      <circle
+                        key={idx}
+                        cx="18"
+                        cy="18"
+                        r="15.915"
+                        fill="none"
+                        stroke={donutColors[idx]}
+                        strokeWidth="4"
+                        strokeDasharray={`${seg.dashArray} 100`}
+                        strokeDashoffset={-seg.offset}
+                        strokeLinecap="round"
+                      />
+                    ))}
                   </svg>
-                  
-                  <div className="absolute flex flex-col items-center justify-center text-center">
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Rasio</span>
-                    <span className="text-sm font-black text-slate-800" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <div className="text-[8px] text-slate-400">Rasio</div>
+                    <div className="text-xs font-black text-slate-800">
                       {pctKebutuhan}/{pctKeinginan}/{pctTabungan}
-                    </span>
+                    </div>
                   </div>
                 </div>
-
-                {/* List Legend Keterangan */}
-                <div className="flex flex-col gap-3.5 flex-1 w-full text-left">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full bg-[#334A43] block"></span>
-                      <span className="text-slate-500">Kebutuhan Utama ({pctKebutuhan}%)</span>
+                {/* Progress Bars */}
+                <div className="flex-1 w-full space-y-3">
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span>Needs (Kebutuhan Pokok)</span>
+                      <span>{Math.min(100, Math.round(needsUsedPercent))}% / {pctKebutuhan}%</span>
                     </div>
-                    <span className="text-slate-800 font-bold">{formatRupiah(kebutuhan)}</span>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-[#00685f] h-2 rounded-full" style={{ width: `${Math.min(100, needsUsedPercent)}%` }}></div>
+                    </div>
                   </div>
-
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full bg-[#566C63] block"></span>
-                      <span className="text-slate-500">Gaya Hidup/Keinginan ({pctKeinginan}%)</span>
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span>Wants (Keinginan)</span>
+                      <span>{Math.min(100, Math.round(wantsUsedPercent))}% / {pctKeinginan}%</span>
                     </div>
-                    <span className="text-slate-800 font-bold">{formatRupiah(keinginan)}</span>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-[#66b5ad] h-2 rounded-full" style={{ width: `${Math.min(100, wantsUsedPercent)}%` }}></div>
+                    </div>
                   </div>
-
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full bg-[#A2B097] block"></span>
-                      <span className="text-slate-500">Tabungan Deposito ({pctTabungan}%)</span>
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span>Savings (Tabungan & Investasi)</span>
+                      <span>{Math.min(100, Math.round(savingsPercent))}% / {pctTabungan}%</span>
                     </div>
-                    <span className="text-slate-800 font-bold">{formatRupiah(tabungan)}</span>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-[#b3d9d5] h-2 rounded-full" style={{ width: `${Math.min(100, savingsPercent)}%` }}></div>
+                    </div>
                   </div>
                 </div>
-
               </div>
             </div>
 
-            {/* COLUMN RIGHT (SPAN 5): TARGET IMPIAN WIDGETS */}
-            <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.01)]">
-              <div className="flex flex-col text-left mb-5">
-                <h3 className="font-bold text-base text-slate-800 tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>Target Finansial Impian</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Alokasi otomatis dari pilihan SetupFinancial</p>
-              </div>
-
-              <div className="max-h-[175px] overflow-y-auto no-scrollbar pr-1">
-                <div className="space-y-3">
-                  {allGoals.map((goal) => {
-                    const isUserGoal = userSelectedGoals?.includes(goal.id);
-                    return (
-                      <div key={goal.id} className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all ${isUserGoal ? 'bg-slate-50/60 border-slate-100 opacity-100 font-semibold' : 'bg-white border-dashed border-slate-100 opacity-30 select-none'}`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isUserGoal ? 'bg-[#00685f] text-white' : 'bg-slate-100 text-slate-400'}`}>
-                            <span className="material-symbols-outlined text-[18px]">{goal.icon}</span>
+            {/* Kolom Kanan: Kategori Pengeluaran Terbesar dengan Donut Chart */}
+            <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+              <div className="text-sm font-bold text-slate-800 mb-4">Kategori Pengeluaran Terbesar</div>
+              {topCategories.length === 0 ? (
+                <div className="text-xs text-slate-400 text-center py-8">Belum ada transaksi</div>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-4 items-center">
+                  {/* Donut Chart Kategori */}
+                  <div className="relative w-28 h-28 flex-shrink-0">
+                    <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+                      {categoryDonutSegments.map((seg, idx) => (
+                        <circle
+                          key={idx}
+                          cx="18"
+                          cy="18"
+                          r="15.915"
+                          fill="none"
+                          stroke={seg.color}
+                          strokeWidth="4"
+                          strokeDasharray={`${seg.dashArray} 100`}
+                          strokeDashoffset={-seg.offset}
+                          strokeLinecap="round"
+                        />
+                      ))}
+                      {/* Lingkaran tengah putih */}
+                      <circle cx="18" cy="18" r="10" fill="white" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-[10px] font-bold text-slate-600">{topCategories.length}</div>
+                        <div className="text-[8px] text-slate-400">Kategori</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Legend Kategori */}
+                  <div className="flex-1 w-full space-y-2">
+                    {categoryDonutSegments.map((seg, idx) => {
+                      const percent = totalTopCategories > 0 ? (seg.amount / totalTopCategories) * 100 : 0;
+                      return (
+                        <div key={idx} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: seg.color }}></span>
+                            <span className="text-xs font-medium text-slate-600 truncate max-w-[100px]">{seg.category}</span>
                           </div>
-                          <div className="text-left">
-                            <h4 className="text-xs font-bold text-slate-800">{goal.label}</h4>
-                            <p className="text-[10px] text-slate-400 font-medium">
-                              {isUserGoal ? `Alokasi Aktif: ${formatRupiah(tabungan)}` : 'Tidak Dipilih'}
-                            </p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-slate-800">{formatRupiah(seg.amount)}</span>
+                            <span className="text-xs text-slate-400">({Math.round(percent)}%)</span>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-slate-700">{goal.target}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* ROW 3: RECENT ACTIVITIES MUTATION LIST */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.01)]">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex flex-col text-left">
-                <h4 className="font-bold text-slate-800 text-sm tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>Aktivitas Transaksi Terakhir</h4>
-                <p className="text-[11px] text-slate-400">Mutasi keuangan masuk dan keluar</p>
-              </div>
-              <button onClick={() => navigate('/history')} className="text-xs font-bold text-[#00685f] hover:text-[#005049] bg-transparent border-none cursor-pointer hover:underline transition-all">
-                Lihat Semua
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {transactions && transactions.length > 0 ? (
-                transactions.slice(0, 3).map((trx, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50/50 rounded-2xl border border-slate-100 transition-all hover:bg-slate-50">
-                    <div className="flex items-center gap-3.5">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center ${trx.type === 'pengeluaran' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-[#00685f]'}`}>
-                        <span className="material-symbols-outlined text-base">
-                          {trx.type === 'pengeluaran' ? 'shopping_bag' : 'payments'}
-                        </span>
-                      </div>
-                      <div className="text-left">
-                        <h5 className="text-xs font-bold text-slate-800">{trx.note || trx.category}</h5>
-                        <p className="text-[10px] text-slate-400 font-medium">{trx.category} • {trx.date}</p>
-                      </div>
-                    </div>
-                    <span className={`text-xs font-black ${trx.type === 'pengeluaran' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {trx.type === 'pengeluaran' ? '-' : '+'} {formatRupiah(trx.amount)}
-                    </span>
+                      );
+                    })}
                   </div>
-                ))
-              ) : (
-                <p className="text-xs text-slate-400 text-center py-4">Belum ada riwayat aktivitas transaksi.</p>
+                </div>
               )}
             </div>
           </div>
 
+          {/* Grafik Mingguan */}
+          <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-sm font-bold text-slate-800">Pengeluaran Mingguan</span>
+              <button className="bg-slate-100 text-xs font-semibold text-slate-600 px-3 py-1.5 rounded-lg flex items-center gap-1">
+                Minggu Ini <span className="material-symbols-outlined text-sm">expand_more</span>
+              </button>
+            </div>
+            <div className="flex items-end justify-between gap-1 h-28 mt-2">
+              {weekDays.map((day, idx) => (
+                <div key={day} className="flex flex-col items-center gap-1 flex-1">
+                  <div
+                    className="w-full bg-teal-100 rounded-t-md transition-all duration-300"
+                    style={{ height: `${weeklyHeights[idx]}px` }}
+                  ></div>
+                  <span className="text-[9px] font-semibold text-slate-500">{day}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Transaksi Terakhir */}
+          <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-sm font-bold text-slate-800">Transaksi Terakhir</span>
+              <button onClick={() => navigate('/history')} className="text-xs font-bold text-[#00685f]">Lihat Semua</button>
+            </div>
+            {transactions.length === 0 ? (
+              <div className="text-center py-6 text-slate-400 text-sm">Belum ada transaksi</div>
+            ) : (
+              transactions.slice(0, 3).map((tx) => (
+                <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center ${tx.type === 'expense' ? 'bg-rose-50 text-rose-500' : 'bg-teal-50 text-teal-700'}`}>
+                    <span className="material-symbols-outlined text-base">{tx.type === 'expense' ? 'shopping_bag' : 'payments'}</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-slate-800">{tx.description || tx.category}</div>
+                    <div className="text-[10px] text-slate-400">{tx.category} • {tx.date}</div>
+                  </div>
+                  <div className={`text-xs font-extrabold ${tx.type === 'expense' ? 'text-rose-500' : 'text-teal-700'}`}>
+                    {tx.type === 'expense' ? '-' : '+'} {formatRupiah(tx.amount)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Banner Promo */}
+          <div className="bg-gradient-to-r from-teal-800 to-teal-600 rounded-xl p-5 flex gap-4 shadow-md">
+            <div className="flex-1">
+              <div className="text-white font-extrabold text-base mb-1">Simpan lebih banyak untuk masa depanmu.</div>
+              <div className="text-teal-100 text-xs font-medium mb-3">Mulai fitur auto-tabungan hari ini dan nikmati bunga hingga 4.5% p.a.</div>
+              <button className="bg-white text-teal-800 text-xs font-extrabold px-4 py-2 rounded-lg">Coba Sekarang</button>
+            </div>
+            <div className="w-16 h-20 bg-white/10 rounded-xl flex items-center justify-center text-3xl">🌿</div>
+          </div>
         </main>
       </div>
 
-      {/* FAB Floating Action Button */}
-      <button 
-        onClick={() => navigate('/transaction')} 
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[#00685f] text-white rounded-full flex items-center justify-center shadow-[0px_6px_20px_rgba(0,104,95,0.2)] hover:bg-[#008378] active:scale-95 transition-all duration-150 z-50 cursor-pointer border-none"
+      {/* Floating Action Button untuk mobile */}
+      <button
+        onClick={() => navigate('/transaction')}
+        className="fixed bottom-5 right-5 md:hidden w-12 h-12 bg-[#00685f] text-white rounded-full shadow-lg flex items-center justify-center z-50 border-none cursor-pointer"
       >
-        <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'wght' 500" }}>add</span>
+        <span className="material-symbols-outlined text-2xl">add</span>
       </button>
-
     </div>
   );
 }
