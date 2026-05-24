@@ -29,41 +29,11 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         
-        <Route 
-          path="/setup-financial" 
-          element={
-            <SetupFinancial 
-              setMonthlyIncome={setMonthlyIncome} 
-              setCustomPct={setCustomPct}
-              setUserSelectedGoals={setUserSelectedGoals}
-            />
-          } 
-        />
+        <Route path="/setup-financial" element={<SetupFinancial />} />
 
-        <Route 
-          path="/dashboard" 
-          element={
-            <Dashboard 
-              monthlyIncome={monthlyIncome} 
-              setMonthlyIncome={setMonthlyIncome}
-              customPct={customPct}
-              userSelectedGoals={userSelectedGoals}
-              transactions={transactions}
-            />
-          } 
-        />
+        <Route path="/dashboard" element={<Dashboard />} />
 
-        <Route 
-          path="/transaction" 
-          element={
-            <TransactionPage 
-              monthlyIncome={monthlyIncome} 
-              setMonthlyIncome={setMonthlyIncome}
-              transactions={transactions}
-              setTransactions={setTransactions}
-            />
-          } 
-        />
+        <Route path="/transaction" element={<TransactionPage />} />
 
         <Route 
           path="/statistics" 
@@ -75,15 +45,7 @@ function App() {
           } 
         />
 
-        <Route 
-          path="/history" 
-          element={
-            <HistoryPage 
-              monthlyIncome={monthlyIncome}
-              transactions={transactions}
-            />
-          } 
-        />
+        <Route path="/history" element={<HistoryPage />} />
 
         {/* ROUTE BARU: Halaman Utama Settings */}
         <Route 
