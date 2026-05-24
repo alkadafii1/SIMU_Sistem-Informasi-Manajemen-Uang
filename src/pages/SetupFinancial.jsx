@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 function SetupFinancial({ setMonthlyIncome, setCustomPct, setUserSelectedGoals }) {
   const navigate = useNavigate();
@@ -43,25 +44,30 @@ function SetupFinancial({ setMonthlyIncome, setCustomPct, setUserSelectedGoals }
   };
 
   // Fungsi saat menekan tombol "Terapkan Strategi Keuangan"
-  const handleApplyStrategy = () => {
+  const handleApplyStrategy = async () => {
     if (totalPercentage !== 100) {
       alert('Total alokasi harus pas 100% sebelum melanjutkan!');
       return;
     }
 
-    // Mengirimkan data ke state global App.jsx agar dashboard langsung berubah otomatis
-    if (setMonthlyIncome) setMonthlyIncome(income);
-    if (setCustomPct) {
-      setCustomPct({
-        kebutuhan: pctKebutuhan,
-        keinginan: pctKeinginan,
-        tabungan: pctTabungan
+    try {
+      const response = await api.put('/user/setup', {
+        income: income,
+        allocation: {
+          kebutuhan: pctKebutuhan,
+          keinginan: pctKeinginan,
+          tabungan: pctTabungan
+        },
+        goals: financialGoals
       });
-    }
-    if (setUserSelectedGoals) setUserSelectedGoals(financialGoals);
 
-    // Navigasi ke dashboard dengan state bonus popup welcome
-    navigate('/dashboard', { state: { fromSetup: true } });
+      if (response.data.success) {
+        navigate('/dashboard', { state: { fromSetup: true } });
+      }
+    } catch (error) {
+      console.error('Gagal menyimpan setup:', error);
+      alert('Terjadi kesalahan, silakan coba lagi.');
+    }
   };
 
   const formatRupiah = (angka) => {
@@ -132,43 +138,91 @@ function SetupFinancial({ setMonthlyIncome, setCustomPct, setUserSelectedGoals }
               </span>
             </div>
 
-            <div className="space-y-5 bg-slate-50/50 border border-slate-100 p-5 rounded-2xl">
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-slate-700">
-                  <span>Kebutuhan Pokok</span>
-                  <span>{pctKebutuhan}%</span>
+          <div className="space-y-5 bg-slate-50/50 border border-slate-100 p-5 rounded-2xl">
+            {/* Kebutuhan */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold text-slate-700 items-center">
+                <span>Kebutuhan Pokok</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={pctKebutuhan}
+                    onChange={(e) => {
+                      let val = parseInt(e.target.value) || 0;
+                      if (val > 100) val = 100;
+                      if (val < 0) val = 0;
+                      setPctKebutuhan(val);
+                    }}
+                    className="w-16 text-center text-xs border border-slate-200 rounded-lg py-1 px-1 focus:outline-none focus:border-[#00685f]"
+                  />
+                  <span>%</span>
                 </div>
-                <input 
-                  type="range" min="0" max="100" value={pctKebutuhan}
-                  onChange={(e) => setPctKebutuhan(parseInt(e.target.value))}
-                  className="w-full accent-[#334A43] h-1.5 bg-slate-200 rounded-lg cursor-pointer"
-                />
               </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-slate-700">
-                  <span>Gaya Hidup &amp; Keinginan</span>
-                  <span>{pctKeinginan}%</span>
-                </div>
-                <input 
-                  type="range" min="0" max="100" value={pctKeinginan}
-                  onChange={(e) => setPctKeinginan(parseInt(e.target.value))}
-                  className="w-full accent-[#566C63] h-1.5 bg-slate-200 rounded-lg cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-slate-700">
-                  <span>Tabungan &amp; Investasi</span>
-                  <span>{pctTabungan}%</span>
-                </div>
-                <input 
-                  type="range" min="0" max="100" value={pctTabungan}
-                  onChange={(e) => setPctTabungan(parseInt(e.target.value))}
-                  className="w-full accent-[#A2B097] h-1.5 bg-slate-200 rounded-lg cursor-pointer"
-                />
-              </div>
+              <input 
+                type="range" min="0" max="100" value={pctKebutuhan}
+                onChange={(e) => setPctKebutuhan(parseInt(e.target.value))}
+                className="w-full accent-[#334A43] h-1.5 bg-slate-200 rounded-lg cursor-pointer"
+              />
             </div>
+
+            {/* Keinginan */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold text-slate-700 items-center">
+                <span>Gaya Hidup &amp; Keinginan</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={pctKeinginan}
+                    onChange={(e) => {
+                      let val = parseInt(e.target.value) || 0;
+                      if (val > 100) val = 100;
+                      if (val < 0) val = 0;
+                      setPctKeinginan(val);
+                    }}
+                    className="w-16 text-center text-xs border border-slate-200 rounded-lg py-1 px-1 focus:outline-none focus:border-[#00685f]"
+                  />
+                  <span>%</span>
+                </div>
+              </div>
+              <input 
+                type="range" min="0" max="100" value={pctKeinginan}
+                onChange={(e) => setPctKeinginan(parseInt(e.target.value))}
+                className="w-full accent-[#566C63] h-1.5 bg-slate-200 rounded-lg cursor-pointer"
+              />
+            </div>
+
+            {/* Tabungan */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold text-slate-700 items-center">
+                <span>Tabungan &amp; Investasi</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={pctTabungan}
+                    onChange={(e) => {
+                      let val = parseInt(e.target.value) || 0;
+                      if (val > 100) val = 100;
+                      if (val < 0) val = 0;
+                      setPctTabungan(val);
+                    }}
+                    className="w-16 text-center text-xs border border-slate-200 rounded-lg py-1 px-1 focus:outline-none focus:border-[#00685f]"
+                  />
+                  <span>%</span>
+                </div>
+              </div>
+              <input 
+                type="range" min="0" max="100" value={pctTabungan}
+                onChange={(e) => setPctTabungan(parseInt(e.target.value))}
+                className="w-full accent-[#A2B097] h-1.5 bg-slate-200 rounded-lg cursor-pointer"
+              />
+            </div>
+          </div>
           </div>
 
           {/* PILIHAN GOALS IMPIAN */}
