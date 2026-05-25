@@ -216,7 +216,7 @@ function Dashboard() {
               {userInitial}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-[#00685f]" style={{ fontFamily: 'Manrope, sans-serif' }}>WealthFlow</h1>
+              <h1 className="text-xl font-bold text-[#00685f]" style={{ fontFamily: 'Manrope, sans-serif' }}>SIMU - Sistem Informasi Manajemen Uang</h1>
               <p className="text-xs text-slate-400 hidden md:block">Ringkasan finansialmu</p>
             </div>
           </div>
