@@ -1,71 +1,34 @@
-import React, { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './context/ThemeContext';
 import Onboarding from './pages/Onboarding';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import SetupFinancial from './pages/SetupFinancial';
 import Dashboard from './pages/Dashboard';
 import TransactionPage from './pages/TransactionPage';
-import StatisticsPage from './pages/StatisticsPage'; 
 import HistoryPage from './pages/HistoryPage';
+import StatisticsPage from './pages/StatisticsPage';
 import SettingsPage from './pages/SettingsPage';
+import SetupFinancial from './pages/SetupFinancial';
 import ProfilePage from './pages/ProfilePage';
 
 function App() {
-  // State global untuk pendapatan/saldo utama
-  const [monthlyIncome, setMonthlyIncome] = useState(5000000);
-  const [customPct, setCustomPct] = useState({ kebutuhan: 50, keinginan: 30, tabungan: 20 });
-  const [userSelectedGoals, setUserSelectedGoals] = useState(['rumah']);
-  
-  // State global untuk menampung riwayat aktivitas transaksi secara real-time
-  const [transactions, setTransactions] = useState([
-    { type: 'pemasukan', amount: 5000000, category: 'Gaji Pokok', note: 'Setup Saldo Awal', date: 'Baru saja' }
-  ]);
-
   return (
-    <div className="min-h-screen bg-[#FDFCFD] text-slate-800 antialiased font-sans">
+    <ThemeProvider>
       <Routes>
-        <Route path="/" element={<Onboarding />} />
+        <Route path="/" element={<Navigate to="/onboarding" replace />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        
-        <Route path="/setup-financial" element={<SetupFinancial />} />
-
         <Route path="/dashboard" element={<Dashboard />} />
-
         <Route path="/transaction" element={<TransactionPage />} />
-
-        <Route 
-          path="/statistics" 
-          element={
-            <StatisticsPage 
-              monthlyIncome={monthlyIncome}
-              customPct={customPct}
-            />
-          } 
-        />
-
         <Route path="/history" element={<HistoryPage />} />
-
-        {/* ROUTE BARU: Halaman Utama Settings */}
-        <Route 
-          path="/settings" 
-          element={
-            <SettingsPage />
-          } 
-        />
-
-        {/* ROUTE BARU: Halaman Detail / Edit Profile Settings */}
-        <Route 
-          path="/profile" 
-          element={
-            <ProfilePage 
-              monthlyIncome={monthlyIncome}
-            />
-          } 
-        />
+        <Route path="/statistics" element={<StatisticsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/setup-financial" element={<SetupFinancial />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Routes>
-    </div>
+    </ThemeProvider>
   );
 }
 
