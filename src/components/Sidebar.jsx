@@ -1,55 +1,123 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 
 function Sidebar({ userData, userAvatar, userInitial }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { isDarkMode } = useTheme();
+  const [collapsed, setCollapsed] = useState(false);
+
+  const menuItems = [
+    { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
+    { path: '/transaction', icon: 'add_card', label: 'Transaksi' },
+    { path: '/history', icon: 'receipt_long', label: 'Riwayat' },
+    { path: '/settings', icon: 'settings', label: 'Pengaturan' },
+  ];
+
+  const isActive = (path) => location.pathname === path;
+
+  // Theme-based styles
+  const sidebarBg = isDarkMode ? 'bg-[#1f2937]' : 'bg-white';
+  const borderColor = isDarkMode ? 'border-gray-700' : 'border-slate-200';
+  const borderTopColor = isDarkMode ? 'border-gray-700' : 'border-slate-100';
+  const textColor = isDarkMode ? 'text-gray-300' : 'text-slate-500';
+  const activeBg = isDarkMode ? 'bg-[#00685f]/20' : 'bg-[#00685f]/10';
+  const activeText = 'text-[#00685f]';
+  const hoverBg = isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-50';
+  const buttonHover = isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100';
+  const logoTextColor = isDarkMode ? 'text-white' : 'text-[#00685f]';
+  const userNameColor = isDarkMode ? 'text-gray-200' : 'text-slate-800';
 
   return (
-    <aside className="hidden md:flex md:w-64 bg-white border-r border-slate-100 flex-col justify-between p-6 h-screen sticky top-0">
-      <div className="space-y-8">
-        <div onClick={() => navigate('/dashboard')} className="cursor-pointer flex items-center gap-3 px-2">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden">
-        <img src="/favicon.webp" alt="Logo" className="w-full h-full object-contain" />
+    <>
+      {/* Sidebar */}
+      <aside
+        className={`hidden md:flex flex-col fixed left-0 top-0 h-screen z-40 ${sidebarBg} border-r ${borderColor} transition-all duration-300 ${
+          collapsed ? 'w-14' : 'w-52'
+        }`}
+      >
+        {/* Tombol Minimaze */}
+        <div className={`py-3 ${collapsed ? 'px-2' : 'px-3'} border-b ${borderTopColor}`}>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className={`w-full flex items-center justify-center py-1.5 rounded-md ${textColor} ${buttonHover} transition-colors`}
+            title={collapsed ? "Expand" : "Minimize"}
+          >
+            <span className="material-symbols-outlined text-base">
+              {collapsed ? 'menu' : 'chevron_left'}
+            </span>
+            {!collapsed && (
+              <span className="text-xs ml-1">Sembunyikan</span>
+            )}
+          </button>
         </div>
-          <span className="text-xl font-extrabold text-[#00685f]" style={{ fontFamily: 'Manrope, sans-serif' }}>SIMU</span>
-        </div>
-        <nav className="space-y-1.5">
-          <button onClick={() => navigate('/dashboard')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl bg-[#00685f]/10 text-[#00685f] font-semibold text-sm transition-all text-left">
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>dashboard</span>
-            <span>Dashboard</span>
-          </button>
-          <button onClick={() => navigate('/statistics')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm transition-all text-left">
-            <span className="material-symbols-outlined">analytics</span>
-            <span>Statistik Analisis</span>
-          </button>
-          <button onClick={() => navigate('/history')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm transition-all text-left">
-            <span className="material-symbols-outlined">receipt_long</span>
-            <span>Riwayat Aktivitas</span>
-          </button>
-          <button onClick={() => navigate('/transaction')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm transition-all text-left">
-            <span className="material-symbols-outlined">payments</span>
-            <span>Target Tabungan</span>
-          </button>
-          <button onClick={() => navigate('/settings')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-500 hover:text-[#00685f] hover:bg-slate-50 font-medium text-sm transition-all text-left">
-            <span className="material-symbols-outlined">settings</span>
-            <span>Pengaturan</span>
-          </button>
-        </nav>
-      </div>
-      <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
-        {userAvatar ? (
-          <img src={userAvatar} className="w-10 h-10 rounded-full object-cover border border-slate-100" alt="avatar" />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-[#d8e5e2] flex items-center justify-center font-bold text-[#00685f]">
-            {userInitial}
+
+        {/* Logo */}
+        <div className={`py-4 ${collapsed ? 'px-0' : 'px-3'}`}>
+          <div
+            onClick={() => navigate('/dashboard')}
+            className={`flex items-center cursor-pointer ${collapsed ? 'justify-center' : 'gap-2'}`}
+          >
+            <div className="w-7 h-7 rounded-lg bg-[#00685f] flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-xs font-bold">S</span>
+            </div>
+            {!collapsed && (
+              <span className={`text-base font-bold ${logoTextColor}`}>SIMU</span>
+            )}
           </div>
-        )}
-        <div className="flex flex-col overflow-hidden">
-          <span className="text-xs font-bold text-slate-800 truncate">{userData.name}</span>
-          <span className="text-[10px] text-slate-400 font-medium truncate">{userData.email}</span>
         </div>
-      </div>
-    </aside>
+
+        {/* Menu */}
+        <nav className="flex-1 px-2 space-y-1">
+          {menuItems.map((item) => (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-left ${
+                isActive(item.path)
+                  ? `${activeBg} ${activeText} font-semibold`
+                  : `${textColor} ${hoverBg}`
+              } ${collapsed ? 'justify-center px-0' : ''}`}
+              title={collapsed ? item.label : ''}
+            >
+              <span className="material-symbols-outlined text-base">{item.icon}</span>
+              {!collapsed && <span className="text-xs">{item.label}</span>}
+            </button>
+          ))}
+        </nav>
+
+        {/* User Profile */}
+        <div className={`py-3 border-t ${borderTopColor} ${collapsed ? 'px-2' : 'px-3'}`}>
+          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2'}`}>
+            {userAvatar ? (
+              <img 
+                src={userAvatar} 
+                className="w-7 h-7 rounded-full object-cover flex-shrink-0" 
+                alt="avatar" 
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-[#d8e5e2] flex items-center justify-center font-bold text-[#00685f] text-xs flex-shrink-0">
+                {userInitial}
+              </div>
+            )}
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <div className={`text-xs font-bold truncate ${userNameColor}`}>
+                  {userData?.name || 'Pengguna'}
+                </div>
+                <div className="text-[9px] text-slate-400 truncate">
+                  {userData?.email || 'email@example.com'}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* Spacer untuk konten utama */}
+      <div className={`hidden md:block transition-all duration-300 ${collapsed ? 'w-14' : 'w-52'}`} />
+    </>
   );
 }
 
