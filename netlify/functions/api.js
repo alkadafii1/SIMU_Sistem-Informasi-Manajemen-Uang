@@ -1,12 +1,14 @@
-// netlify/functions/api.js
+require('dotenv').config();
+
 const express = require('express');
 const serverless = require('serverless-http');
+const fetch = require('node-fetch');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 
-// ==================== KONFIGURASI ====================
+// Konfigurasi
 const JWT_SECRET = process.env.JWT_SECRET || 'simu-secret-key-2026-prod';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const AI_API_URL = process.env.AI_API_URL || 'https://financial-health-prediction-production.up.railway.app';
@@ -17,7 +19,7 @@ const generateToken = (userId, email) => {
   return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' });
 };
 
-// ==================== IN-MEMORY STORAGE ====================
+// In-memory Storage
 const users = [];
 const transactions = [];
 global.userSetups = [];
@@ -33,12 +35,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// ==================== HEALTH CHECK ====================
+// Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'SIMU Backend Running on Netlify Functions' });
 });
 
-// ==================== AUTH MANUAL ====================
+// Auth Manual
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -95,7 +97,7 @@ app.post('/api/auth/login', async (req, res) => {
   });
 });
 
-// ==================== GOOGLE LOGIN ====================
+// Google Login
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { idToken } = req.body;
@@ -152,7 +154,7 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-// ==================== USER SETUP ====================
+// User Setup
 app.get('/api/user/setup', (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -240,7 +242,7 @@ app.put('/api/user/setup', async (req, res) => {
   }
 });
 
-// ==================== TRANSACTIONS ====================
+// Transactions
 app.get('/api/transactions', (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -308,7 +310,7 @@ app.delete('/api/transactions/:id', (req, res) => {
   }
 });
 
-// ==================== AI ENDPOINTS ====================
+// AI Endpoints
 function mapToAIRequest(userId, monthlyIncome, userTransactions) {
   let groceries = 0, transport = 0, eating_out = 0, entertainment = 0;
   let utilities = 0, healthcare = 0, rent = 0, loan_repayment = 0;
@@ -350,17 +352,45 @@ app.get('/api/ai/health', async (req, res) => {
   }
   
   try {
-    const response = await fetch(`${AI_API_URL}/health`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(`${AI_API_URL}/health`, {
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Health check failed with status: ${response.status}`);
+    }
+    
     const data = await response.json();
     res.json({ success: true, ai_api_status: 'online', ai_response: data });
   } catch (error) {
+    console.error('[AI Health] Error:', error.message);
     res.json({ success: true, ai_api_status: 'offline', message: error.message });
   }
 });
 
+// Cache untuk AI prediction
+const aiCache = new Map();
+
 app.post('/api/ai/predict', async (req, res) => {
   const { userId, monthlyIncome } = req.body;
   const userTransactions = transactions.filter(t => t.userId === userId);
+  
+  // Buat cache key
+  const cacheKey = `${userId}_${monthlyIncome}`;
+  
+  // Cek cache (valid selama 5 menit)
+  if (aiCache.has(cacheKey)) {
+    const cached = aiCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 300000) {
+      console.log('[CACHE] Returning cached prediction');
+      return res.json(cached.data);
+    }
+  }
   
   if (USE_MOCK_AI) {
     console.log('[MOCK] Predict for user', userId);
@@ -368,30 +398,48 @@ app.post('/api/ai/predict', async (req, res) => {
     if (monthlyIncome >= 10000000) label = 'Financially Healthy';
     else if (monthlyIncome <= 3000000) label = 'At Risk';
     
-    return res.json({
+    const mockResponse = {
       success: true,
       is_mock: true,
       prediction: { label, confidence: 0.85 },
       recommendation: `(Mock) ${label === 'At Risk' ? 'Perhatikan keuangan Anda.' : 'Keuangan Anda sehat.'}`,
       source: 'mock_ai'
-    });
+    };
+    
+    // Simpan ke cache
+    aiCache.set(cacheKey, { data: mockResponse, timestamp: Date.now() });
+    
+    return res.json(mockResponse);
   }
   
+  let controller = null;
   try {
     const aiRequest = mapToAIRequest(userId, monthlyIncome, userTransactions);
     console.log('[REAL AI] Calling API...');
     
+    controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
     const response = await fetch(`${AI_API_URL}/predict-financial-health`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(aiRequest)
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(aiRequest),
+      signal: controller.signal
     });
     
-    if (!response.ok) throw new Error(`AI API error: ${response.status}`);
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error(`[REAL AI] API responded with status: ${response.status} ${response.statusText}`);
+      throw new Error(`AI API error: ${response.status} ${response.statusText}`);
+    }
     
     const aiData = await response.json();
     
-    res.json({
+    const responseData = {
       success: true,
       prediction: {
         classId: aiData.prediction?.class_id,
@@ -403,19 +451,54 @@ app.post('/api/ai/predict', async (req, res) => {
       summary: aiData.summary,
       recommendation: aiData.recommendation,
       source: aiData.recommendation_source || 'ai_api'
-    });
+    };
+    
+    // Simpan ke cache
+    aiCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+    
+    res.json(responseData);
     
   } catch (error) {
+    if (controller) {
+      clearTimeout(controller.signal?._events);
+    }
     console.error('[REAL AI] Error:', error.message);
-    res.json({
+    
+    const fallbackResponse = {
       success: true,
       is_fallback: true,
       prediction: { label: 'Moderate', confidence: 0.5 },
       recommendation: 'AI sedang sibuk, ini rekomendasi sementara: catat semua pengeluaran Anda.',
       source: 'fallback'
-    });
+    };
+    
+    // Simpan fallback ke cache juga untuk mencegah spam
+    aiCache.set(cacheKey, { data: fallbackResponse, timestamp: Date.now() });
+    
+    res.json(fallbackResponse);
   }
 });
 
-// Export
+// Export untuk Netlify Functions
 module.exports.handler = serverless(app);
+
+// Run Lokal
+if (require.main === module) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`\n🚀 SIMU Backend Running at http://localhost:${PORT}`);
+    console.log(`\n📋 Endpoints:`);
+    console.log(`   GET  /api/health`);
+    console.log(`   GET  /api/ai/health`);
+    console.log(`   POST /api/ai/predict`);
+    console.log(`   POST /api/auth/register`);
+    console.log(`   POST /api/auth/login`);
+    console.log(`   POST /api/auth/google`);
+    console.log(`   GET  /api/user/setup`);
+    console.log(`   PUT  /api/user/setup`);
+    console.log(`   GET  /api/transactions`);
+    console.log(`   POST /api/transactions`);
+    console.log(`   DELETE /api/transactions/:id`);
+    console.log(`\n🤖 AI Mode: ${USE_MOCK_AI ? 'MOCK' : 'REAL (Railway)'}\n`);
+  });
+}
