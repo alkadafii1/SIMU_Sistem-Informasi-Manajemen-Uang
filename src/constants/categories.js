@@ -19,6 +19,9 @@ export const WANTS_CATEGORIES = [
   'Lainnya'
 ];
 
+// Hari
+export const WEEK_DAYS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
 // Semua kategori
 export const ALL_CATEGORIES = [...NEEDS_CATEGORIES, ...WANTS_CATEGORIES];
 
