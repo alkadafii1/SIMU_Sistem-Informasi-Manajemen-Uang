@@ -7,6 +7,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const { createClient } = require('@supabase/supabase-js');
 
 // Konfigurasi
 const JWT_SECRET = process.env.JWT_SECRET || 'simu-secret-key-2026-prod';
@@ -14,15 +15,15 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const AI_API_URL = process.env.AI_API_URL || 'https://financial-health-prediction-production.up.railway.app';
 const USE_MOCK_AI = false;
 
+// Supabase Client
+// Menggunakan service_role key untuk backend (bypass RLS)
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 // Helper function
 const generateToken = (userId, email) => {
   return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' });
 };
-
-// In-memory Storage
-const users = [];
-const transactions = [];
-global.userSetups = [];
 
 const app = express();
 
@@ -35,9 +36,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Cache untuk AI prediction
+const aiCache = new Map();
+
 // Health Check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'SIMU Backend Running on Netlify Functions' });
+  res.json({ status: 'OK', message: 'SIMU Backend Running on Netlify Functions with Supabase' });
 });
 
 // Auth Manual
@@ -47,29 +51,49 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Semua field wajib diisi' });
   }
   
-  const existing = users.find(u => u.email === email);
-  if (existing) {
-    return res.status(409).json({ success: false, message: 'Email sudah terdaftar' });
+  try {
+    // Cek apakah email sudah terdaftar
+    const { data: existingUser, error: findError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+    
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: 'Email sudah terdaftar' });
+    }
+    
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    // Insert user ke database
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert({
+        name,
+        email,
+        password_hash: passwordHash,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (insertError) {
+      console.error('Insert error:', insertError);
+      return res.status(500).json({ success: false, message: 'Gagal mendaftar' });
+    }
+    
+    const token = generateToken(newUser.id, email);
+    
+    res.status(201).json({
+      success: true,
+      user: { id: newUser.id, name, email },
+      token
+    });
+    
+  } catch (error) {
+    console.error('Register error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
-  
-  const passwordHash = await bcrypt.hash(password, 10);
-  
-  const newUser = { 
-    id: users.length + 1, 
-    name, 
-    email, 
-    passwordHash,
-    createdAt: new Date().toISOString() 
-  };
-  users.push(newUser);
-  
-  const token = generateToken(newUser.id, email);
-  
-  res.status(201).json({ 
-    success: true, 
-    user: { id: newUser.id, name, email }, 
-    token 
-  });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -78,31 +102,40 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Email dan password wajib diisi' });
   }
   
-  const user = users.find(u => u.email === email);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Email atau password salah' });
+  try {
+    const { data: user, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+    
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Email atau password salah' });
+    }
+    
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ success: false, message: 'Email atau password salah' });
+    }
+    
+    const token = generateToken(user.id, email);
+    
+    res.json({
+      success: true,
+      user: { id: user.id, name: user.name, email: user.email },
+      token
+    });
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
-  
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) {
-    return res.status(401).json({ success: false, message: 'Email atau password salah' });
-  }
-  
-  const token = generateToken(user.id, email);
-  
-  res.json({ 
-    success: true, 
-    user: { id: user.id, name: user.name, email: user.email }, 
-    token 
-  });
 });
 
 // Google Login
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { idToken } = req.body;
-    
-    console.log('[Google] Login attempt, token length:', idToken?.length);
     
     if (!idToken) {
       return res.status(400).json({ success: false, message: 'ID token tidak ditemukan' });
@@ -122,30 +155,41 @@ app.post('/api/auth/google', async (req, res) => {
     const payload = ticket.getPayload();
     const { email, name, sub: googleId } = payload;
     
-    console.log('[Google] Verified email:', email);
-    
-    let user = users.find(u => u.email === email);
+    // Cari user berdasarkan email
+    let { data: user, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
     
     if (!user) {
+      // Buat user baru
       const dummyPassword = await bcrypt.hash('google-oauth-' + Date.now(), 10);
-      user = { 
-        id: users.length + 1, 
-        name: name || email.split('@')[0], 
-        email, 
-        passwordHash: dummyPassword, 
-        googleId: googleId,
-        createdAt: new Date().toISOString() 
-      };
-      users.push(user);
-      console.log('[Google] New user created:', email);
+      const { data: newUser, error: insertError } = await supabase
+        .from('users')
+        .insert({
+          name: name || email.split('@')[0],
+          email,
+          password_hash: dummyPassword,
+          google_id: googleId,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error('Google insert error:', insertError);
+        return res.status(500).json({ success: false, message: 'Gagal membuat akun' });
+      }
+      user = newUser;
     }
     
     const token = generateToken(user.id, user.email);
     
-    res.json({ 
-      success: true, 
-      user: { id: user.id, name: user.name, email: user.email }, 
-      token 
+    res.json({
+      success: true,
+      user: { id: user.id, name: user.name, email: user.email },
+      token
     });
     
   } catch (error) {
@@ -155,7 +199,7 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 // User Setup
-app.get('/api/user/setup', (req, res) => {
+app.get('/api/user/setup', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ success: false, message: 'No token' });
@@ -166,14 +210,18 @@ app.get('/api/user/setup', (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const userId = decoded.userId;
     
-    const userSetup = global.userSetups?.find(us => us.userId === userId);
+    const { data: userSetup, error } = await supabase
+      .from('user_setups')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
     
     if (!userSetup) {
       return res.status(404).json({ success: false, message: 'Setup not found' });
     }
     
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       setup: {
         income: userSetup.income,
         allocation: userSetup.allocation
@@ -196,42 +244,58 @@ app.put('/api/user/setup', async (req, res) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     const userId = decoded.userId;
-    const { income, allocation } = req.body;
+    const { income, allocation, goals } = req.body;
     
     if (!income || !allocation) {
       return res.status(400).json({ success: false, message: 'Income and allocation are required' });
     }
     
-    if (!global.userSetups) {
-      global.userSetups = [];
-    }
+    // Cek apakah sudah ada setup
+    const { data: existingSetup } = await supabase
+      .from('user_setups')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
     
-    const existingIndex = global.userSetups.findIndex(us => us.userId === userId);
-    
-    if (existingIndex >= 0) {
-      global.userSetups[existingIndex] = {
-        ...global.userSetups[existingIndex],
-        income,
-        allocation,
-        updatedAt: new Date().toISOString()
-      };
+    let result;
+    if (existingSetup) {
+      // Update existing
+      result = await supabase
+        .from('user_setups')
+        .update({
+          income,
+          allocation,
+          goals: goals || [],
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
     } else {
-      global.userSetups.push({
-        userId,
-        income,
-        allocation,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      // Insert new
+      result = await supabase
+        .from('user_setups')
+        .insert({
+          user_id: userId,
+          income,
+          allocation,
+          goals: goals || [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
     }
     
-    const user = users.find(u => u.id === userId);
-    if (user) {
-      user.monthlyIncome = income;
+    if (result.error) {
+      console.error('Setup error:', result.error);
+      return res.status(500).json({ success: false, message: 'Gagal menyimpan setup' });
     }
     
-    res.json({ 
-      success: true, 
+    // Update monthly_income di users
+    await supabase
+      .from('users')
+      .update({ monthly_income: income })
+      .eq('id', userId);
+    
+    res.json({
+      success: true,
       message: 'Setup berhasil disimpan',
       setup: { income, allocation }
     });
@@ -243,7 +307,7 @@ app.put('/api/user/setup', async (req, res) => {
 });
 
 // Transactions
-app.get('/api/transactions', (req, res) => {
+app.get('/api/transactions', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ success: false, message: 'No token' });
@@ -252,60 +316,93 @@ app.get('/api/transactions', (req, res) => {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const userTransactions = transactions.filter(t => t.userId === decoded.userId);
-    res.json({ success: true, transactions: userTransactions });
-  } catch (err) {
-    res.status(401).json({ success: false, message: 'Invalid token' });
-  }
-});
-
-app.post('/api/transactions', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ success: false, message: 'No token' });
-  }
-  
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const { amount, category, type, date, description } = req.body;
+    const userId = decoded.userId;
     
-    const newTransaction = {
-      id: transactions.length + 1,
-      userId: decoded.userId,
-      amount,
-      category,
-      type,
-      date: date || new Date().toISOString().split('T')[0],
-      description: description || category,
-      createdAt: new Date().toISOString()
-    };
-    transactions.push(newTransaction);
-    res.status(201).json({ success: true, transaction: newTransaction });
-  } catch (err) {
-    res.status(401).json({ success: false, message: 'Invalid token' });
-  }
-});
-
-app.delete('/api/transactions/:id', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ success: false, message: 'No token' });
-  }
-  
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const transactionId = parseInt(req.params.id);
-    const transactionIndex = transactions.findIndex(t => t.id === transactionId && t.userId === decoded.userId);
+    const { data: transactions, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
     
-    if (transactionIndex === -1) {
-      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    if (error) {
+      console.error('Get transactions error:', error);
+      return res.status(500).json({ success: false, message: 'Gagal mengambil transaksi' });
     }
     
-    transactions.splice(transactionIndex, 1);
-    res.json({ success: true, message: 'Transaction deleted' });
+    res.json({ success: true, transactions: transactions || [] });
+    
   } catch (err) {
+    console.error('Get transactions error:', err);
+    res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+});
+
+app.post('/api/transactions', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: 'No token' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+    const { amount, category, type, date, description } = req.body;
+    
+    const { data: newTransaction, error } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        amount,
+        category,
+        type,
+        date: date || new Date().toISOString().split('T')[0],
+        description: description || category,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Insert transaction error:', error);
+      return res.status(500).json({ success: false, message: 'Gagal menambah transaksi' });
+    }
+    
+    res.status(201).json({ success: true, transaction: newTransaction });
+    
+  } catch (err) {
+    console.error('Post transaction error:', err);
+    res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+});
+
+app.delete('/api/transactions/:id', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: 'No token' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+    const transactionId = parseInt(req.params.id);
+    
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', transactionId)
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Delete transaction error:', error);
+      return res.status(500).json({ success: false, message: 'Gagal menghapus transaksi' });
+    }
+    
+    res.json({ success: true, message: 'Transaction deleted' });
+    
+  } catch (err) {
+    console.error('Delete transaction error:', err);
     res.status(401).json({ success: false, message: 'Invalid token' });
   }
 });
@@ -373,17 +470,18 @@ app.get('/api/ai/health', async (req, res) => {
   }
 });
 
-// Cache untuk AI prediction
-const aiCache = new Map();
-
 app.post('/api/ai/predict', async (req, res) => {
   const { userId, monthlyIncome } = req.body;
-  const userTransactions = transactions.filter(t => t.userId === userId);
   
-  // Buat cache key
+  // Ambil transaksi dari database
+  const { data: userTransactions, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('user_id', userId);
+  
   const cacheKey = `${userId}_${monthlyIncome}`;
   
-  // Cek cache (valid selama 5 menit)
+  // Cek cache
   if (aiCache.has(cacheKey)) {
     const cached = aiCache.get(cacheKey);
     if (Date.now() - cached.timestamp < 300000) {
@@ -406,15 +504,13 @@ app.post('/api/ai/predict', async (req, res) => {
       source: 'mock_ai'
     };
     
-    // Simpan ke cache
     aiCache.set(cacheKey, { data: mockResponse, timestamp: Date.now() });
-    
     return res.json(mockResponse);
   }
   
   let controller = null;
   try {
-    const aiRequest = mapToAIRequest(userId, monthlyIncome, userTransactions);
+    const aiRequest = mapToAIRequest(userId, monthlyIncome, userTransactions || []);
     console.log('[REAL AI] Calling API...');
     
     controller = new AbortController();
@@ -453,9 +549,7 @@ app.post('/api/ai/predict', async (req, res) => {
       source: aiData.recommendation_source || 'ai_api'
     };
     
-    // Simpan ke cache
     aiCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
-    
     res.json(responseData);
     
   } catch (error) {
@@ -472,14 +566,12 @@ app.post('/api/ai/predict', async (req, res) => {
       source: 'fallback'
     };
     
-    // Simpan fallback ke cache juga untuk mencegah spam
     aiCache.set(cacheKey, { data: fallbackResponse, timestamp: Date.now() });
-    
     res.json(fallbackResponse);
   }
 });
 
-// Export untuk Netlify Functions
+// Export
 module.exports.handler = serverless(app);
 
 // Run Lokal
@@ -499,6 +591,7 @@ if (require.main === module) {
     console.log(`   GET  /api/transactions`);
     console.log(`   POST /api/transactions`);
     console.log(`   DELETE /api/transactions/:id`);
-    console.log(`\n🤖 AI Mode: ${USE_MOCK_AI ? 'MOCK' : 'REAL (Railway)'}\n`);
+    console.log(`\n🤖 AI Mode: ${USE_MOCK_AI ? 'MOCK' : 'REAL (Railway)'}`);
+    console.log(`\n🗄️  Database: Supabase (${supabaseUrl?.substring(0, 30)}...)\n`);
   });
 }

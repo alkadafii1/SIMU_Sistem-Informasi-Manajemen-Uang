@@ -30,10 +30,6 @@ const StepOne = () => {
 
       {/* Teks Editorial */}
       <div className="flex-1 text-center lg:text-left max-w-md w-full">
-        <div className="inline-flex items-center gap-2 bg-[#1E4D4A]/10 text-[#1E4D4A] text-xs font-bold px-3.5 py-2 rounded-full mb-5 shadow-sm border border-[#1E4D4A]/5">
-          <span className="w-2 h-2 bg-[#1E4D4A] rounded-full animate-pulse"></span>
-          Financial Freedom Start Here
-        </div>
         <h2 className="text-3xl md:text-4xl lg:text-5xl font-black text-slate-800 mb-4 leading-tight tracking-tight">
           Kuasai Uangmu Bersama <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#1E4D4A] to-[#4b807c]">SIMU</span>
         </h2>

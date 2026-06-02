@@ -81,9 +81,6 @@ const StepThree = () => {
 
       {/* Kanan - Feature Badges Grid */}
       <div className="flex-1 text-center lg:text-left max-w-md w-full">
-        <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-full mb-4 border border-emerald-100/50">
-          🛡️ Pantau Finansial Secara Real-Time
-        </div>
         <h2 className="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-800 mb-3 tracking-tight">
           Daily Budget & <br/>
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#1E4D4A] to-[#609994]">Smart Alert</span>
