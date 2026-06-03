@@ -66,7 +66,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                 const goalLabel = goalInfo?.label || goal.id;
                 if (description.includes(goalLabel)) {
                   savingsByGoal[goal.id] = (savingsByGoal[goal.id] || 0) + amount;
-                  console.log(`Alokasi ke ${goalLabel}: +${amount}, total: ${savingsByGoal[goal.id]}`);
                   break;
                 }
               }
@@ -74,12 +73,10 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           } else {
             // Ini adalah TOPUP ke tabungan umum (dari saldo aktif)
             totalTopUpToGeneral += amount;
-            console.log(`Topup ke tabungan umum: +${amount}`);
           }
         } else if (tx.category === 'Tarik dari Tabungan') {
           const amount = tx.amount;
           totalWithdrawFromGeneral += amount;
-          console.log(`Withdraw dari tabungan umum: -${amount}`);
         }
       });
       
@@ -87,11 +84,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
       // Saldo = Total Topup - (Total Alokasi + Total Withdraw)
       const totalGeneralSavings = totalTopUpToGeneral - (totalAllocatedToGoals + totalWithdrawFromGeneral);
       const unallocated = Math.max(0, totalGeneralSavings);
-      
-      console.log('Total Topup ke Tabungan Umum:', totalTopUpToGeneral);
-      console.log('Total Alokasi ke Target:', totalAllocatedToGoals);
-      console.log('Total Withdraw dari Tabungan:', totalWithdrawFromGeneral);
-      console.log('Saldo Tabungan Umum Tersedia:', unallocated);
       
       setUnallocatedSavings(unallocated);
       setTotalSavings(totalTopUpToGeneral);
@@ -103,8 +95,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           const savedAmount = savingsByGoal[goal.id] || 0;
           const targetAmount = goal.target || originalGoal?.defaultTarget || 100000000;
           const progress = targetAmount > 0 ? (savedAmount / targetAmount) * 100 : 0;
-          
-          console.log(`Goal ${goal.id}: saved=${savedAmount}, target=${targetAmount}, progress=${progress}%`);
           
           return {
             id: goal.id,
@@ -332,7 +322,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     return (
       <div className={`${getCardBg()} rounded-lg border ${getBorderColor()} shadow-sm p-4`}>
         <div className="flex items-center gap-2 mb-3">
-          <h3 className={`text-sm font-bold ${getTextPrimary()}`}>Target Finansial Impian</h3>
+          <h3 className={`text-sm font-bold ${getTextPrimary()}`}>{t('goals')}</h3>
         </div>
         <div className="flex justify-center py-4">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#00685f] border-t-transparent"></div>
@@ -345,12 +335,12 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     return (
       <div className={`${getCardBg()} rounded-lg border ${getBorderColor()} shadow-sm p-4`}>
         <div className="flex items-center gap-2 mb-3">
-          <h3 className={`text-sm font-bold ${getTextPrimary()}`}>Target Finansial Impian</h3>
+          <h3 className={`text-sm font-bold ${getTextPrimary()}`}>{t('goals')}</h3>
         </div>
         <div className="text-center py-4">
           <span className="material-symbols-outlined text-3xl text-gray-300 dark:text-gray-600 mb-2">add_circle</span>
-          <p className={`text-xs ${getTextSecondary()} mb-2`}>Belum ada target finansial</p>
-          <button onClick={() => navigate('/goals-setting')} className="text-xs font-medium text-[#00685f] hover:underline">+ Atur Target</button>
+          <p className={`text-xs ${getTextSecondary()} mb-2`}>{t('noTransactions')}</p>
+          <button onClick={() => navigate('/goals-setting')} className="text-xs font-medium text-[#00685f] hover:underline">+ {t('addGoal')}</button>
         </div>
       </div>
     );
@@ -376,7 +366,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           <div className={`${getCardBg()} rounded-2xl max-w-md w-full shadow-xl overflow-hidden`}>
             <div className={`p-5 border-b ${getBorderColor()} flex justify-between items-center`}>
               <h3 className={`text-lg font-bold ${getTextPrimary()}`}>
-                {allocationType === 'to_goal' ? 'Alokasikan ke Target' : 'Tarik dari Tabungan Umum'}
+                {allocationType === 'to_goal' ? t('allocateToGoal') : t('withdrawToActive')}
               </h3>
               <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600">
                 <span className="material-symbols-outlined">close</span>
@@ -386,7 +376,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
             <div className="p-5 space-y-4">
               <div className={`${isDarkMode ? 'bg-amber-900/20' : 'bg-amber-50'} p-3 rounded-lg`}>
                 <p className={`text-sm ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                  Saldo Tabungan Umum: <strong>{formatRupiah(unallocatedSavings)}</strong>
+                  {t('generalSavings')}: <strong>{formatRupiah(unallocatedSavings)}</strong>
                 </p>
               </div>
               
@@ -402,7 +392,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                       : `${isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`
                   }`}
                 >
-                  Ke Target
+                  {t('allocateToGoal')}
                 </button>
                 <button
                   onClick={() => {
@@ -415,13 +405,13 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                       : `${isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`
                   }`}
                 >
-                  Tarik ke Saldo Aktif
+                  {t('withdrawToActive')}
                 </button>
               </div>
               
               {allocationType === 'to_goal' && (
                 <div>
-                  <label className={`block text-xs font-semibold ${getTextSecondary()} mb-2`}>Pilih Target</label>
+                  <label className={`block text-xs font-semibold ${getTextSecondary()} mb-2`}>{t('selectGoal')}</label>
                   <div className="grid grid-cols-2 gap-2">
                     {goalsData.map((goal) => (
                       <button
@@ -441,7 +431,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
               )}
               
               <div>
-                <label className={`block text-xs font-semibold ${getTextSecondary()} mb-2`}>Nominal</label>
+                <label className={`block text-xs font-semibold ${getTextSecondary()} mb-2`}>{t('amountToAllocate')}</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">Rp</span>
                   <input
@@ -460,17 +450,17 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
               
               {allocationAmount && parseInt(allocationAmount, 10) > 0 && (
                 <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} p-3 rounded-lg`}>
-                  <p className="text-xs text-gray-500">Preview:</p>
+                  <p className="text-xs text-gray-500">{t('preview')}</p>
                   <p className={`text-sm ${getTextPrimary()}`}>
                     {allocationType === 'to_goal' 
-                      ? `💰 Akan dialokasikan ke target ${selectedAllocationGoal ? goalsData.find(g => g.id === selectedAllocationGoal)?.label : ''}`
-                      : `📤 Akan ditarik ke Saldo Aktif`}
+                      ? `${t('willBeAllocatedTo')} ${selectedAllocationGoal ? goalsData.find(g => g.id === selectedAllocationGoal)?.label : ''}`
+                      : t('willBeWithdrawnTo')}
                   </p>
                   <p className="text-sm font-bold text-emerald-600">
                     {formatRupiah(parseInt(allocationAmount, 10))}
                   </p>
                   <p className={`text-xs ${getTextSecondary()} mt-1`}>
-                    Sisa Tabungan Umum: {formatRupiah(unallocatedSavings - parseInt(allocationAmount, 10))}
+                    {t('remainingSavings')}: {formatRupiah(unallocatedSavings - parseInt(allocationAmount, 10))}
                   </p>
                 </div>
               )}
@@ -481,7 +471,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                 onClick={handleCloseModal}
                 className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
               >
-                Batal
+                {t('cancel')}
               </button>
               <button
                 onClick={allocationType === 'to_goal' ? handleAllocateToGoal : handleWithdrawFromGeneral}
@@ -492,7 +482,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                     : 'bg-amber-600 hover:bg-amber-700 text-white'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                {isAllocating ? 'Memproses...' : (allocationType === 'to_goal' ? 'Alokasikan' : 'Tarik Dana')}
+                {isAllocating ? t('processing') : (allocationType === 'to_goal' ? t('allocate') : t('withdraw'))}
               </button>
             </div>
           </div>
@@ -503,9 +493,9 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
       <div className={`${getCardBg()} rounded-lg border ${getBorderColor()} shadow-sm p-4`}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <h3 className={`text-sm font-bold ${getTextPrimary()}`}>Target Finansial Impian</h3>
+            <h3 className={`text-sm font-bold ${getTextPrimary()}`}>{t('goals')}</h3>
           </div>
-          <button onClick={() => navigate('/goals-setting')} className="text-xs font-medium text-[#00685f] hover:underline">Atur</button>
+          <button onClick={() => navigate('/goals-setting')} className="text-xs font-medium text-[#00685f] hover:underline">{t('manageGoals')}</button>
         </div>
         
         <div className="space-y-3">
@@ -523,12 +513,12 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                   <div className="flex-1">
                     <p className={`text-sm font-bold ${getTextPrimary()}`}>{goal.label}</p>
                     <p className={`text-[10px] ${getTextSecondary()}`}>
-                      Target: {formatRupiah(targetAmount)}
+                      {t('targetAmount')}: {formatRupiah(targetAmount)}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className={`text-sm font-bold ${getTextPrimary()}`}>{Math.round(progress)}%</p>
-                    <p className={`text-[9px] ${getTextSecondary()}`}>tercapai</p>
+                    <p className={`text-[9px] ${getTextSecondary()}`}>{t('achieved')}</p>
                   </div>
                 </div>
                 
@@ -544,8 +534,8 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                 </div>
                 
                 <div className="flex justify-between text-[11px]">
-                  <span className={`font-medium ${getTextSecondary()}`}>Terkumpul: {formatRupiah(savedAmount)}</span>
-                  <span className={`font-medium ${getTextSecondary()}`}>Kurang: {formatRupiah(targetAmount - savedAmount)}</span>
+                  <span className={`font-medium ${getTextSecondary()}`}>{t('savedAmount')}: {formatRupiah(savedAmount)}</span>
+                  <span className={`font-medium ${getTextSecondary()}`}>{t('remainingAmount')}: {formatRupiah(targetAmount - savedAmount)}</span>
                 </div>
               </div>
             );
@@ -559,12 +549,12 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                   <span className={`material-symbols-outlined ${isDarkMode ? 'text-amber-300' : 'text-amber-600'}`}>savings</span>
                 </div>
                 <div className="flex-1">
-                  <p className={`text-sm font-bold ${getTextPrimary()}`}>Tabungan Umum</p>
-                  <p className={`text-[10px] ${getTextSecondary()}`}>Belum dialokasikan ke target</p>
+                  <p className={`text-sm font-bold ${getTextPrimary()}`}>{t('generalSavings')}</p>
+                  <p className={`text-[10px] ${getTextSecondary()}`}>{t('unallocated')}</p>
                 </div>
                 <div className="text-right">
                   <p className={`text-lg font-black ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>{formatRupiah(unallocatedSavings)}</p>
-                  <p className={`text-[9px] ${getTextSecondary()}`}>tersedia</p>
+                  <p className={`text-[9px] ${getTextSecondary()}`}>{t('available') || 'tersedia'}</p>
                 </div>
               </div>
               
@@ -580,7 +570,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                   className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center justify-center gap-1"
                 >
                   <span className="material-symbols-outlined text-sm">assignment</span>
-                  Alokasikan ke Target
+                  {t('allocateToGoal')}
                 </button>
                 <button
                   onClick={() => {
@@ -592,7 +582,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                   className="flex-1 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-all flex items-center justify-center gap-1"
                 >
                   <span className="material-symbols-outlined text-sm">arrow_upward</span>
-                  Tarik ke Saldo Aktif
+                  {t('withdrawToActive')}
                 </button>
               </div>
             </div>
@@ -600,7 +590,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
         </div>
         
         <button onClick={() => navigate('/transaction')} className="w-full mt-3 py-2 text-center text-xs font-medium text-[#00685f] hover:underline">
-          + Transfer ke Tabungan
+          + {t('transferToSavings')}
         </button>
       </div>
     </>
