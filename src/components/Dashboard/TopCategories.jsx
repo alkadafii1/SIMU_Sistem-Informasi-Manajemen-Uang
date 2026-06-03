@@ -9,6 +9,7 @@ const TopCategories = ({
   borderColor,
   textPrimary,
   textSecondary,
+  t,
 }) => {
   // Hitung pengeluaran per kategori
   const expenseByCategory = transactions
@@ -26,14 +27,14 @@ const TopCategories = ({
 
   return (
     <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-5`}>
-      <h3 className={`text-sm font-semibold ${textPrimary} mb-4`}>📊 Kategori Pengeluaran Terbesar</h3>
+      <h3 className={`text-sm font-semibold ${textPrimary} mb-4`}>📊 {t('topExpenseCategories')}</h3>
 
       {topCategories.length === 0 ? (
         <div className="text-center py-8 text-gray-400 text-sm">
           <span className="material-symbols-outlined text-3xl mb-2">receipt_long</span>
-          <p>Belum ada transaksi</p>
+          <p>{t('noTransactions')}</p>
           <button onClick={onNavigate} className="mt-2 text-[#00685f] underline text-xs">
-            Catat transaksi pertama
+            {t('firstTransaction')}
           </button>
         </div>
       ) : (

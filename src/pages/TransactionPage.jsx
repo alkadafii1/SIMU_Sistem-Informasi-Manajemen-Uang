@@ -386,19 +386,41 @@ function TransactionPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+          {/* MAIN CONTENT */}
+          <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 no-scrollbar">
             <div className="max-w-5xl mx-auto">
-              {/* Financial Summary Card - Sekarang pakai cardBg seperti komponen lain */}
+              {/* Financial Summary & Tips */}
               {!financialData.isLoading && (
-                <div className={`${cardBg} rounded-xl border ${borderColor} p-4 mb-6 shadow-sm`}>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className={`text-xs ${textSecondary} mb-1`}>Sisa Budget Saat Ini</p>
-                      <p className={`text-2xl font-bold ${textPrimary}`}>{formatRupiah(financialData.remaining)}</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                  {/* Kiri: Sisa Budget & Total Pemasukan */}
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-4 shadow-sm`}>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className={`text-xs ${textSecondary} mb-1`}>Sisa Budget Saat Ini</p>
+                        <p className={`text-2xl font-bold ${textPrimary}`}>{formatRupiah(financialData.remaining)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-xs ${textSecondary} mb-1`}>Total Pemasukan</p>
+                        <p className={`font-semibold ${textPrimary}`}>{formatRupiah(totalPemasukan)}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`text-xs ${textSecondary} mb-1`}>Total Pemasukan</p>
-                      <p className={`font-semibold ${textPrimary}`}>{formatRupiah(totalPemasukan)}</p>
+                  </div>
+
+                  {/* Kanan: Tips & Aturan */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 p-4 shadow-sm">
+                    <div className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-blue-500 text-base flex-shrink-0">info</span>
+                      <div className="text-xs text-blue-700 dark:text-blue-300 flex-1">
+                        <p className="font-semibold mb-1.5">💡 Tips & Aturan:</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                          <p>• Min transaksi Rp 1.000</p>
+                          <p>• Max transaksi Rp 10 Miliar</p>
+                          <p>• Tidak melebihi sisa budget</p>
+                          <p>• Konfirmasi di atas Rp 5.000.000</p>
+                          <p>• Pilih "Lainnya" jika perlu</p>
+                          <p>• Isi catatan agar mudah dilacak</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -442,9 +464,12 @@ function TransactionPage() {
                 </button>
               </div>
 
+              {/* 2 Kolom Utama */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column - Nominal Input */}
+                
+                {/* Kolom Kiri - Nominal Input & Number Pad */}
                 <div className="space-y-6">
+                  {/* Card Total Nominal */}
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-6 text-center shadow-sm`}>
                     <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-2`}>
                       Total Nominal
@@ -512,10 +537,34 @@ function TransactionPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Tombol Simpan */}
+                  <button
+                    onClick={handleSaveTransaction}
+                    disabled={loading || !amountString || amountString === '0' || isBalanceInsufficient}
+                    className={`hidden lg:flex w-full py-4 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] items-center justify-center gap-2 ${
+                      transactionType === 'expense'
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                        : 'bg-[#00685f] hover:bg-[#005049] text-white'
+                    } ${(loading || !amountString || amountString === '0' || isBalanceInsufficient) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                        Menyimpan...
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined">save</span>
+                        Simpan {transactionType === 'expense' ? 'Pengeluaran' : 'Pemasukan'}
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                {/* Right Column - Category & Note */}
+                {/* Kolom kanan - Kategori & Catatan */}
                 <div className="space-y-6">
+                  {/* Kategori */}
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
                     <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-4`}>
                       Pilih Kategori
@@ -558,6 +607,7 @@ function TransactionPage() {
                     )}
                   </div>
 
+                  {/* Catatan */}
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
                     <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-2`}>
                       Catatan (Opsional)
@@ -574,11 +624,12 @@ function TransactionPage() {
                       {note.length}/200 karakter
                     </div>
                   </div>
-
+                  
+                  {/* Tombol Simpan (mobile) */}
                   <button
                     onClick={handleSaveTransaction}
                     disabled={loading || !amountString || amountString === '0' || isBalanceInsufficient}
-                    className={`w-full py-4 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                    className={`lg:hidden w-full py-4 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-4 ${
                       transactionType === 'expense'
                         ? 'bg-rose-600 hover:bg-rose-700 text-white'
                         : 'bg-[#00685f] hover:bg-[#005049] text-white'
@@ -596,23 +647,6 @@ function TransactionPage() {
                       </>
                     )}
                   </button>
-
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-100 dark:border-blue-800">
-                    <div className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-blue-500 text-sm">info</span>
-                      <div className="text-xs text-blue-700 dark:text-blue-300">
-                        <p className="font-semibold mb-1">💡 Tips & Aturan:</p>
-                        <ul className="list-disc list-inside space-y-0.5">
-                          <li>Minimal transaksi Rp 1.000</li>
-                          <li>Maksimal transaksi Rp 10 Miliar</li>
-                          <li>Pengeluaran tidak boleh melebihi sisa budget</li>
-                          <li>Transaksi di atas Rp 5.000.000 akan dikonfirmasi</li>
-                          <li>Pilih "Lainnya" jika kategori tidak tersedia, lalu tulis kategori custom</li>
-                          <li>Isi catatan agar mudah dilacak</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

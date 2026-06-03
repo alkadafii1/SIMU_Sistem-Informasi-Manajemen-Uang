@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import { useThemeStyles } from '../hooks/useThemeStyles';
 import api from '../services/api';
+import { formatRupiah } from '../utils/format';
 
 function HistoryPage() {
   const navigate = useNavigate();
+  const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
+  
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactions, setTransactions] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,6 +25,7 @@ function HistoryPage() {
 
   const ITEMS_PER_PAGE = 10;
 
+  // Ambil data user dari localStorage
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
@@ -41,15 +46,6 @@ function HistoryPage() {
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
-  };
-
-  const formatRupiah = (angka) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(angka);
   };
 
   const formatDate = (dateString) => {
@@ -79,12 +75,10 @@ function HistoryPage() {
       params.append('limit', ITEMS_PER_PAGE);
       params.append('page', reset ? 1 : page);
       
-      // Filter berdasarkan tipe
       if (typeFilter !== 'semua') {
         params.append('type', typeFilter);
       }
       
-      // Filter berdasarkan tanggal
       const now = new Date();
       if (timeFilter === 'hariIni') {
         params.append('startDate', now.toISOString().split('T')[0]);
@@ -140,18 +134,17 @@ function HistoryPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [typeFilter, timeFilter, searchQuery, sortOrder, page]);
+  }, [typeFilter, timeFilter, searchQuery, sortOrder, page, navigate]);
 
   useEffect(() => {
     fetchTransactions(true);
-  }, [typeFilter, timeFilter, searchQuery, sortOrder]);
+  }, [typeFilter, timeFilter, searchQuery, sortOrder, fetchTransactions]);
 
   // Handle delete transaction
   const handleDeleteTransaction = async (id) => {
     try {
       await api.delete(`/transactions/${id}`);
       showToast('Transaksi berhasil dihapus', 'success');
-      // Refresh list
       fetchTransactions(true);
     } catch (error) {
       console.error('Gagal menghapus transaksi:', error);
@@ -163,7 +156,7 @@ function HistoryPage() {
 
   // Export ke CSV
   const handleExportCSV = () => {
-    const filtered = getFilteredTransactions();
+    const filtered = transactions;
     if (filtered.length === 0) {
       showToast('Tidak ada data untuk diekspor', 'error');
       return;
@@ -179,10 +172,10 @@ function HistoryPage() {
     ]);
     
     const csvContent = [headers, ...csvData]
-      .map(row => row.join(','))
+      .map(row => row.map(cell => `"${cell}"`).join(','))
       .join('\n');
     
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -194,24 +187,6 @@ function HistoryPage() {
     URL.revokeObjectURL(url);
     
     showToast('Data berhasil diekspor', 'success');
-  };
-
-  // Get filtered transactions untuk export
-  const getFilteredTransactions = () => {
-    let filtered = [...transactions];
-    
-    if (typeFilter !== 'semua') {
-      filtered = filtered.filter(trx => trx.type === typeFilter);
-    }
-    
-    if (searchQuery) {
-      filtered = filtered.filter(trx => 
-        (trx.description && trx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (trx.category && trx.category.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-    }
-    
-    return filtered;
   };
 
   // Hitung statistik
@@ -229,28 +204,24 @@ function HistoryPage() {
 
   if (loading && transactions.length === 0) {
     return (
-      <div className="min-h-screen bg-[#f9f9ff] flex items-center justify-center">
+      <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00685f] mx-auto mb-4"></div>
-          <p className="text-gray-500">Memuat riwayat transaksi...</p>
+          <p className={textSecondary}>Memuat riwayat transaksi...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#f9f9ff] text-[#151c27] h-screen flex overflow-hidden font-sans antialiased">
+    <div className={`min-h-screen ${bgColor}`}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
-        .material-symbols-outlined { 
-          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; 
-          display: inline-block; 
-          line-height: 1; 
-          vertical-align: middle; 
+        .material-symbols-outlined {
+          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+          vertical-align: middle;
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .toast-slide {
           animation: slideDown 0.3s ease forwards;
         }
@@ -287,13 +258,13 @@ function HistoryPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-medium hover:bg-gray-50"
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-medium hover:bg-gray-50 transition-all"
               >
                 Batal
               </button>
               <button
                 onClick={() => handleDeleteTransaction(showDeleteConfirm)}
-                className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700"
+                className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all"
               >
                 Hapus
               </button>
@@ -302,226 +273,271 @@ function HistoryPage() {
         </div>
       )}
 
-      {/* Sidebar */}
-      <Sidebar />
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar userData={userData} userAvatar={null} userInitial={userInitial} />
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-8 py-5 sticky top-0 z-10">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                Riwayat Aktivitas
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Kelola dan lihat semua transaksi keuangan Anda
-              </p>
-            </div>
-            <div className="flex gap-3">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className={`${cardBg} border-b ${borderColor} px-4 md:px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+              <div>
+                <h1 className={`text-xl font-bold ${textPrimary}`}>Riwayat Aktivitas</h1>
+                <p className={`text-xs ${textSecondary} mt-0.5`}>
+                  Kelola dan lihat semua transaksi keuangan Anda
+                </p>
+              </div>
               <button
                 onClick={handleExportCSV}
-                className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all"
+                className={`flex items-center justify-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all shadow-sm`}
               >
-                <span className="material-symbols-outlined text-sm">download</span>
+                <span className="material-symbols-outlined text-base">download</span>
                 Export CSV
-              </button>
-              <button
-                onClick={() => navigate('/transaction')}
-                className="flex items-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all"
-              >
-                <span className="material-symbols-outlined text-sm">add</span>
-                Catat Transaksi
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
-          <div className="max-w-6xl mx-auto space-y-6">
-            
-            {/* Statistik Ringkasan */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500">Total Transaksi</p>
-                    <p className="text-2xl font-bold text-gray-800">{statistics.totalTransactions}</p>
+          {/* Main Content - Tambahan padding bottom untuk mobile */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 no-scrollbar">
+            <div className="max-w-6xl mx-auto space-y-5">
+              
+              {/* Statistik Ringkasan - konsisten dengan Dashboard */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-xs ${textSecondary}`}>Total Transaksi</p>
+                      <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{statistics.totalTransactions}</p>
+                    </div>
+                    <span className="material-symbols-outlined text-2xl md:text-3xl text-gray-400">receipt_long</span>
                   </div>
-                  <span className="material-symbols-outlined text-3xl text-gray-400">receipt_long</span>
                 </div>
-              </div>
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500">Total Pemasukan</p>
-                    <p className="text-2xl font-bold text-emerald-600">{formatRupiah(statistics.totalIncome)}</p>
+                <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-xs ${textSecondary}`}>Total Pemasukan</p>
+                      <p className="text-base md:text-2xl font-bold text-emerald-600">{formatRupiah(statistics.totalIncome)}</p>
+                    </div>
+                    <span className="material-symbols-outlined text-2xl md:text-3xl text-emerald-500">arrow_upward</span>
                   </div>
-                  <span className="material-symbols-outlined text-3xl text-emerald-500">arrow_upward</span>
                 </div>
-              </div>
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500">Total Pengeluaran</p>
-                    <p className="text-2xl font-bold text-rose-600">{formatRupiah(statistics.totalExpense)}</p>
+                <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-xs ${textSecondary}`}>Total Pengeluaran</p>
+                      <p className="text-base md:text-2xl font-bold text-rose-600">{formatRupiah(statistics.totalExpense)}</p>
+                    </div>
+                    <span className="material-symbols-outlined text-2xl md:text-3xl text-rose-500">arrow_downward</span>
                   </div>
-                  <span className="material-symbols-outlined text-3xl text-rose-500">arrow_downward</span>
                 </div>
               </div>
-            </div>
 
-            {/* Filter Section */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Search */}
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
-                  <input
-                    type="text"
-                    placeholder="Cari transaksi..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#00685f]"
-                  />
+              {/* Filter Section - Responsive grid */}
+              <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm p-4 md:p-5`}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                  {/* Search */}
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
+                    <input
+                      type="text"
+                      placeholder="Cari transaksi..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className={`w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
+                    />
+                  </div>
+
+                  {/* Filter Tipe */}
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
+                  >
+                    <option value="semua">Semua Tipe</option>
+                    <option value="income">Pemasukan</option>
+                    <option value="expense">Pengeluaran</option>
+                  </select>
+
+                  {/* Filter Waktu */}
+                  <select
+                    value={timeFilter}
+                    onChange={(e) => setTimeFilter(e.target.value)}
+                    className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
+                  >
+                    <option value="semua">Semua Waktu</option>
+                    <option value="hariIni">Hari Ini</option>
+                    <option value="mingguIni">Minggu Ini</option>
+                    <option value="bulanIni">Bulan Ini</option>
+                  </select>
+
+                  {/* Sort Order */}
+                  <button
+                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    className={`flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
+                  >
+                    <span className="material-symbols-outlined text-base">
+                      {sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}
+                    </span>
+                    {sortOrder === 'desc' ? 'Terbaru' : 'Terlama'}
+                  </button>
                 </div>
-
-                {/* Filter Tipe */}
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#00685f]"
-                >
-                  <option value="semua">Semua Tipe</option>
-                  <option value="income">Pemasukan</option>
-                  <option value="expense">Pengeluaran</option>
-                </select>
-
-                {/* Filter Waktu */}
-                <select
-                  value={timeFilter}
-                  onChange={(e) => setTimeFilter(e.target.value)}
-                  className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#00685f]"
-                >
-                  <option value="semua">Semua Waktu</option>
-                  <option value="hariIni">Hari Ini</option>
-                  <option value="mingguIni">Minggu Ini</option>
-                  <option value="bulanIni">Bulan Ini</option>
-                </select>
-
-                {/* Sort Order */}
-                <button
-                  onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                  className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm hover:bg-gray-100 transition-all"
-                >
-                  <span className="material-symbols-outlined text-base">
-                    {sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}
-                  </span>
-                  {sortOrder === 'desc' ? 'Terbaru' : 'Terlama'}
-                </button>
               </div>
-            </div>
 
-            {/* Transactions List */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Tanggal</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Kategori</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Deskripsi</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Jumlah</th>
-                      <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {transactions.length === 0 ? (
+              {/* Transactions List - Mobile friendly */}
+              <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm overflow-hidden`}>
+                {/* Desktop Table View - hidden on mobile */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead className={`bg-gray-50 dark:bg-gray-800 border-b ${borderColor}`}>
                       <tr>
-                        <td colSpan="5" className="text-center py-12">
-                          <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
-                          <p className="text-sm text-gray-400">Belum ada transaksi</p>
-                          <button
-                            onClick={() => navigate('/transaction')}
-                            className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
-                          >
-                            + Catat transaksi pertama
-                          </button>
-                        </td>
+                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>Tanggal</th>
+                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>Kategori</th>
+                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>Deskripsi</th>
+                        <th className={`text-right px-6 py-3 text-xs font-semibold ${textSecondary}`}>Jumlah</th>
+                        <th className={`text-center px-6 py-3 text-xs font-semibold ${textSecondary}`}>Aksi</th>
                       </tr>
-                    ) : (
-                      transactions.map((transaction) => (
-                        <tr key={transaction.id} className="hover:bg-gray-50 transition-all">
-                          <td className="px-6 py-3">
-                            <div className="text-xs font-medium text-gray-800">{formatDate(transaction.date)}</div>
-                            <div className="text-[10px] text-gray-400">{transaction.date}</div>
-                          </td>
-                          <td className="px-6 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                                transaction.type === 'expense' ? 'bg-rose-100' : 'bg-emerald-100'
-                              }`}>
-                                <span className="material-symbols-outlined text-xs">
-                                  {transaction.type === 'expense' ? 'shopping_bag' : 'payments'}
-                                </span>
-                              </div>
-                              <span className="text-xs font-medium text-gray-700">{transaction.category}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-3">
-                            <span className="text-xs text-gray-600">
-                              {transaction.description || '-'}
-                            </span>
-                          </td>
-                          <td className={`px-6 py-3 text-right text-sm font-bold ${
-                            transaction.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'
-                          }`}>
-                            {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
-                          </td>
-                          <td className="px-6 py-3 text-center">
+                    </thead>
+                    <tbody className={`divide-y ${borderColor}`}>
+                      {transactions.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="text-center py-12">
+                            <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
+                            <p className={`text-sm ${textSecondary}`}>Belum ada transaksi</p>
                             <button
-                              onClick={() => setShowDeleteConfirm(transaction.id)}
-                              className="text-gray-400 hover:text-rose-600 transition-all"
-                              title="Hapus transaksi"
+                              onClick={() => navigate('/transaction')}
+                              className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
                             >
-                              <span className="material-symbols-outlined text-base">delete</span>
+                              + Catat transaksi pertama
                             </button>
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        transactions.map((transaction) => (
+                          <tr key={transaction.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-all`}>
+                            <td className="px-6 py-3">
+                              <div className={`text-xs font-medium ${textPrimary}`}>{formatDate(transaction.date)}</div>
+                              <div className={`text-[10px] ${textSecondary}`}>{transaction.date}</div>
+                            </td>
+                            <td className="px-6 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                                  transaction.type === 'expense' ? 'bg-rose-100 dark:bg-rose-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'
+                                }`}>
+                                  <span className="material-symbols-outlined text-xs">
+                                    {transaction.type === 'expense' ? 'shopping_bag' : 'payments'}
+                                  </span>
+                                </div>
+                                <span className={`text-xs font-medium ${textPrimary}`}>{transaction.category}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-3">
+                              <span className={`text-xs ${textSecondary}`}>
+                                {transaction.description || '-'}
+                              </span>
+                            </td>
+                            <td className={`px-6 py-3 text-right text-sm font-bold ${
+                              transaction.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'
+                            }`}>
+                              {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
+                            </td>
+                            <td className="px-6 py-3 text-center">
+                              <button
+                                onClick={() => setShowDeleteConfirm(transaction.id)}
+                                className="text-gray-400 hover:text-rose-600 transition-all"
+                                title="Hapus transaksi"
+                              >
+                                <span className="material-symbols-outlined text-base">delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card View - shown on mobile */}
+                <div className="block md:hidden divide-y ${borderColor}">
+                  {transactions.length === 0 ? (
+                    <div className="text-center py-12">
+                      <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
+                      <p className={`text-sm ${textSecondary}`}>Belum ada transaksi</p>
+                      <button
+                        onClick={() => navigate('/transaction')}
+                        className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
+                      >
+                        + Catat transaksi pertama
+                      </button>
+                    </div>
+                  ) : (
+                    transactions.map((transaction) => (
+                      <div key={transaction.id} className={`p-4 border-b ${borderColor}`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                                transaction.type === 'expense' ? 'bg-rose-100 dark:bg-rose-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'
+                              }`}>
+                                <span className="material-symbols-outlined text-sm">
+                                  {transaction.type === 'expense' ? 'shopping_bag' : 'payments'}
+                                </span>
+                              </div>
+                              <span className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</span>
+                            </div>
+                            <p className={`text-xs ${textSecondary} mt-1`}>
+                              {transaction.description || 'Tidak ada catatan'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setShowDeleteConfirm(transaction.id)}
+                            className="text-gray-400 hover:text-rose-600 transition-all p-1"
+                          >
+                            <span className="material-symbols-outlined text-base">delete</span>
+                          </button>
+                        </div>
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t ${borderColor}">
+                          <div>
+                            <p className={`text-[10px] ${textSecondary}`}>{formatDate(transaction.date)}</p>
+                            <p className={`text-[10px] ${textSecondary}`}>{transaction.date}</p>
+                          </div>
+                          <p className={`text-base font-bold ${
+                            transaction.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'
+                          }`}>
+                            {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Load More Button */}
+                {hasMore && transactions.length > 0 && (
+                  <div className={`p-4 border-t ${borderColor} text-center`}>
+                    <button
+                      onClick={() => fetchTransactions(false)}
+                      disabled={loadingMore}
+                      className="px-6 py-2 text-sm font-medium text-[#00685f] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all disabled:opacity-50"
+                    >
+                      {loadingMore ? (
+                        <span className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
+                          Memuat...
+                        </span>
+                      ) : (
+                        'Muat Lebih Banyak'
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Load More Button */}
-              {hasMore && transactions.length > 0 && (
-                <div className="p-4 border-t border-gray-100 text-center">
-                  <button
-                    onClick={() => fetchTransactions(false)}
-                    disabled={loadingMore}
-                    className="px-6 py-2 text-sm font-medium text-[#00685f] hover:bg-gray-50 rounded-lg transition-all disabled:opacity-50"
-                  >
-                    {loadingMore ? (
-                      <span className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
-                        Memuat...
-                      </span>
-                    ) : (
-                      'Muat Lebih Banyak'
-                    )}
-                  </button>
+              {/* Info Footer */}
+              {transactions.length > 0 && (
+                <div className={`text-center text-xs ${textSecondary}`}>
+                  Menampilkan {transactions.length} dari {totalCount} transaksi
                 </div>
               )}
             </div>
-
-            {/* Info Footer */}
-            {transactions.length > 0 && (
-              <div className="text-center text-xs text-gray-400">
-                Menampilkan {transactions.length} dari {totalCount} transaksi
-              </div>
-            )}
           </div>
         </div>
       </div>

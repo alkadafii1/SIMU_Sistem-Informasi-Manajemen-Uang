@@ -1,12 +1,12 @@
 import React from 'react';
 
-const WeeklyChart = ({ weeklyExpenses, weekDays, formatRupiah, cardBg, borderColor, textPrimary }) => {
+const WeeklyChart = ({ weeklyExpenses, weekDays, formatRupiah, cardBg, borderColor, textPrimary, t }) => {
   const maxWeekly = Math.max(...weeklyExpenses, 1);
   const weeklyHeights = weeklyExpenses.map((val) => (val / maxWeekly) * 60);
 
   return (
     <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-5`}>
-      <h3 className={`text-sm font-semibold ${textPrimary} mb-4`}>📈 Tren Pengeluaran Mingguan</h3>
+      <h3 className={`text-sm font-semibold ${textPrimary} mb-4`}>📈 {t('weeklyExpenseTrend')}</h3>
 
       <div className="flex items-end justify-between gap-1 h-28">
         {weekDays.map((day, idx) => (

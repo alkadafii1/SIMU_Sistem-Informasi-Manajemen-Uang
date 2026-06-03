@@ -14,6 +14,7 @@ const AICard = ({
   borderColor,
   textPrimary,
   textSecondary,
+  t,
 }) => {
   return (
     <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm overflow-hidden`}>
@@ -23,8 +24,8 @@ const AICard = ({
             <span className="material-symbols-outlined text-white text-base">robot_2</span>
           </div>
           <div>
-            <h3 className={`text-sm font-semibold ${textPrimary}`}>AI Financial Assistant</h3>
-            <p className={`text-[10px] ${textSecondary}`}>Prediksi kesehatan finansial bulanan</p>
+            <h3 className={`text-sm font-semibold ${textPrimary}`}>{t('aiAssistant')}</h3>
+            <p className={`text-[10px] ${textSecondary}`}>{t('monthlyPrediction')}</p>
           </div>
         </div>
         <button
@@ -35,7 +36,7 @@ const AICard = ({
           } rounded-lg transition-all`}
         >
           <span className="material-symbols-outlined text-sm">refresh</span>
-          Refresh
+          {t('refresh')}
         </button>
       </div>
 
@@ -43,12 +44,12 @@ const AICard = ({
         {loading ? (
           <div className={`flex items-center gap-3 ${textSecondary}`}>
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
-            <span className="text-sm">Menganalisis keuangan Anda...</span>
+            <span className="text-sm">{t('analyzing')}</span>
           </div>
         ) : prediction ? (
           <div>
             <div className="flex items-center gap-3 flex-wrap mb-3">
-              <span className={`text-sm ${textSecondary}`}>Status:</span>
+              <span className={`text-sm ${textSecondary}`}>{t('status')}:</span>
               <span
                 className="px-3 py-1 rounded-full text-xs font-medium text-white"
                 style={{ backgroundColor: getStatusColor(prediction.prediction?.label) }}
@@ -83,8 +84,14 @@ const AICard = ({
               )}
             </div>
           </div>
+        ) : error ? (
+          <div className={`${textSecondary} text-sm text-center py-4`}>
+            {error}
+          </div>
         ) : (
-          <div className={`${textSecondary} text-sm text-center py-4`}>Klik Refresh untuk mendapatkan prediksi AI</div>
+          <div className={`${textSecondary} text-sm text-center py-4`}>
+            {t('refresh')} {t('aiAssistant')}
+          </div>
         )}
       </div>
     </div>

@@ -9,22 +9,23 @@ const RecentTransactions = ({
   borderColor,
   textPrimary,
   textSecondary,
+  t,
 }) => {
   return (
     <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-5`}>
       <div className="flex justify-between items-center mb-4">
-        <h3 className={`text-sm font-semibold ${textPrimary}`}>🕐 Transaksi Terakhir</h3>
+        <h3 className={`text-sm font-semibold ${textPrimary}`}>🕐 {t('recentTransactions')}</h3>
         <button onClick={onNavigate} className="text-xs font-medium text-[#00685f] hover:underline">
-          Lihat Semua
+          {t('viewAll')}
         </button>
       </div>
 
       {transactions.length === 0 ? (
         <div className="text-center py-6 text-gray-400 text-sm">
           <span className="material-symbols-outlined text-3xl mb-2">receipt</span>
-          <p>Belum ada transaksi</p>
+          <p>{t('noTransactions')}</p>
           <button onClick={onAddTransaction} className="mt-2 text-[#00685f] underline text-xs">
-            Catat transaksi pertama
+            {t('firstTransaction')}
           </button>
         </div>
       ) : (

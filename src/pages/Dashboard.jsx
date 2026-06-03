@@ -4,6 +4,7 @@ import { useDashboardData } from '../hooks/dashboard/useDashboardData';
 import { useAIPrediction } from '../hooks/dashboard/useAIPrediction';
 import { usePopup } from '../hooks/dashboard/usePopup';
 import { useThemeStyles } from '../hooks/useThemeStyles';
+import { useLanguage } from '../context/LanguageContext';
 import { formatRupiah } from '../utils/format';
 import { getGreeting } from '../utils/dashboard/greeting';
 import { getStatusColor, getStatusIcon, getStatusText } from '../utils/dashboard/aiHelpers';
@@ -27,6 +28,7 @@ function Dashboard() {
   const { prediction: aiPrediction, loading: aiLoading, error: aiError, fetchPrediction, refreshPrediction } = useAIPrediction();
   const { showPopup: showWelcomePopup, progress: popupProgress, closePopup } = usePopup(location);
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
+  const { t } = useLanguage();
   
   // Ref untuk mencegah multiple fetch
   const aiFetchedRef = useRef(false);
@@ -107,8 +109,8 @@ function Dashboard() {
                 <span className="material-symbols-outlined text-emerald-500">check_circle</span>
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-bold text-gray-800">Strategi Finansial Berhasil!</h4>
-                <p className="text-xs text-gray-500 mt-0.5">Alokasi anggaranmu telah diterapkan. Yuk mulai catat transaksi!</p>
+                <h4 className="text-sm font-bold text-gray-800">{t('financialStrategySuccess') || 'Strategi Finansial Berhasil!'}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{t('allocationApplied') || 'Alokasi anggaranmu telah diterapkan. Yuk mulai catat transaksi!'}</p>
               </div>
               <button onClick={closePopup} className="w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
                 <span className="material-symbols-outlined text-sm">close</span>
@@ -126,18 +128,14 @@ function Dashboard() {
           <div className={`${cardBg} border-b ${borderColor} px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex justify-between items-center">
               <div>
-                <h1 className={`text-xl font-bold ${textPrimary}`}>{getGreeting(userData.name)}</h1>
-                <p className={`text-xs ${textSecondary} mt-0.5`}>Yuk kelola keuanganmu hari ini!</p>
+                <h1 className={`text-xl font-bold ${textPrimary}`}>{getGreeting(userData.name, t)}</h1>
+                <p className={`text-xs ${textSecondary} mt-0.5`}>{t('manageFinance')}</p>
               </div>
-              <button onClick={() => navigate('/transaction')} className="flex items-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all">
-                <span className="material-symbols-outlined text-sm">add</span>
-                Catat Transaksi
-              </button>
             </div>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-5 no-scrollbar">
+          <div className="flex-1 overflow-y-auto p-5 pb-24 md:pb-5 space-y-5 no-scrollbar">
             <SummaryCards
               totalIncome={totalEffectiveIncome}
               totalExpense={totalExpense}
@@ -149,6 +147,7 @@ function Dashboard() {
               borderColor={borderColor}
               textPrimary={textPrimary}
               textSecondary={textSecondary}
+              t={t}
             />
 
             <AICard
@@ -165,6 +164,7 @@ function Dashboard() {
               borderColor={borderColor}
               textPrimary={textPrimary}
               textSecondary={textSecondary}
+              t={t}
             />
 
             <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4 flex items-center gap-3`}>
@@ -172,9 +172,9 @@ function Dashboard() {
                 <span className="material-symbols-outlined text-white">lightbulb</span>
               </div>
               <div>
-                <div className="text-[10px] font-medium text-amber-600 uppercase tracking-wide">💡 Rekomendasi Harian</div>
+                <div className="text-[10px] font-medium text-amber-600 uppercase tracking-wide">💡 {t('dailyRecommendation')}</div>
                 <div className={`text-sm font-semibold ${textPrimary}`}>
-                  Batas belanja hari ini: <span className="text-[#00685f]">{formatRupiah(Math.max(0, dailyBudget))}</span>
+                  {t('dailyBudget')}: <span className="text-[#00685f]">{formatRupiah(Math.max(0, dailyBudget))}</span>
                 </div>
               </div>
             </div>
@@ -199,6 +199,7 @@ function Dashboard() {
                 borderColor={borderColor}
                 textPrimary={textPrimary}
                 textSecondary={textSecondary}
+                t={t}
               />
 
               <TopCategories
@@ -210,6 +211,7 @@ function Dashboard() {
                 borderColor={borderColor}
                 textPrimary={textPrimary}
                 textSecondary={textSecondary}
+                t={t}
               />
             </div>
 
@@ -220,6 +222,7 @@ function Dashboard() {
               cardBg={cardBg}
               borderColor={borderColor}
               textPrimary={textPrimary}
+              t={t}
             />
 
             <RecentTransactions
@@ -231,6 +234,7 @@ function Dashboard() {
               borderColor={borderColor}
               textPrimary={textPrimary}
               textSecondary={textSecondary}
+              t={t}
             />
           </div>
         </div>
