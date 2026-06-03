@@ -11,6 +11,7 @@ import SettingsPage from './pages/SettingsPage';
 import SetupFinancial from './pages/SetupFinancial';
 import ProfilePage from './pages/ProfilePage';
 import GoalsSetting from './pages/GoalsSetting';
+import AboutPage from './pages/AboutPage';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
       <Route path="/setup-financial" element={<SetupFinancial />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/goals-setting" element={<GoalsSetting />} />
+      <Route path="/about" element={<AboutPage />} />
     </Routes>
   );
 }

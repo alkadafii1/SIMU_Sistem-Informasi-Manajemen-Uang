@@ -14,6 +14,7 @@ function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
 
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
@@ -55,6 +56,25 @@ function SettingsPage() {
   };
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
+
+  // Data tim capstone
+  const teamMembers = [
+    { 
+      role: 'Full-Stack Web Developer', 
+      members: ['Celvin Alfiansyah', 'Alkadafi Firnawan'],
+      icon: 'code'
+    },
+    { 
+      role: 'AI Engineer', 
+      members: ['Anisa Nabila', 'Izzatul Aliya Nisa'],
+      icon: 'robot_2'
+    },
+    { 
+      role: 'Data Scientist', 
+      members: ['Meilani Bulandari Hasibuan', 'Yelly Ambarwaty'],
+      icon: 'analytics'
+    }
+  ];
 
   return (
     <div className={`h-screen flex overflow-hidden font-sans antialiased transition-colors duration-300 ${
@@ -122,6 +142,103 @@ function SettingsPage() {
               >
                 {loading ? t('processing') : t('confirm')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* About Modal */}
+      {showAboutModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className={`rounded-2xl max-w-md w-full shadow-xl overflow-hidden ${
+            isDarkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            <div className={`p-5 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
+              <h3 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                Tentang SIMU
+              </h3>
+              <button 
+                onClick={() => setShowAboutModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              {/* Logo & Deskripsi */}
+              <div className="text-center">
+                <div className="w-16 h-16 bg-[#00685f] rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <img src="/favicon.webp" alt="SIMU Logo" className="w-full h-full object-cover rounded-lg"/>
+                </div>
+                <h4 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>SIMU</h4>
+                <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
+                  Sistem Informasi Manajemen Uang
+                </p>
+                <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} mt-2`}>
+                  Aplikasi pencatat dan perencana keuangan pribadi untuk generasi muda.
+                </p>
+              </div>
+
+              {/* Team Members */}
+              <div className={`pt-3 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                <p className={`text-xs font-semibold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'} mb-3`}>
+                  Dibuat oleh Tim Capstone CC26-PSU171:
+                </p>
+                <div className="space-y-3">
+                  {teamMembers.map((team, idx) => (
+                    <div key={idx} className={`p-3 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="material-symbols-outlined text-[#00685f] text-sm">{team.icon}</span>
+                        <span className={`text-xs font-semibold ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                          {team.role}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {team.members.map((member, mIdx) => (
+                          <span key={mIdx} className={`text-[10px] px-2 py-0.5 rounded-full ${
+                            isDarkMode ? 'bg-gray-600 text-gray-300' : 'bg-white text-gray-600 border border-gray-200'
+                          }`}>
+                            {member}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Contact */}
+              <div className={`pt-3 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                <p className={`text-xs font-semibold ${isDarkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                  Kontak:
+                </p>
+                <div className="space-y-1">
+                  <a 
+                    href="mailto:simu.finance@example.com" 
+                    className={`flex items-center gap-2 text-xs ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-[#00685f]'} transition-colors`}
+                  >
+                    <span className="material-symbols-outlined text-sm">mail</span>
+                    simu.finance@example.com
+                  </a>
+                  <a 
+                    href="https://github.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className={`flex items-center gap-2 text-xs ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-[#00685f]'} transition-colors`}
+                  >
+                    <span className="material-symbols-outlined text-sm">code</span>
+                    GitHub Repository
+                  </a>
+                </div>
+              </div>
+
+              {/* Version */}
+              <div className={`pt-3 text-center border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                <p className={`text-[9px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Version 1.0.0 • © 2024 SIMU
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -252,22 +369,22 @@ function SettingsPage() {
 
               <div className={`h-px mx-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`} />
 
-              {/* About */}
-              <button 
-                onClick={() => window.open('https://github.com', '_blank')}
-                className="w-full flex items-center justify-between p-4 hover:bg-black/5 transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="material-symbols-outlined text-gray-400">info</span>
-                  <div>
-                    <div className="text-sm font-semibold">{t('about')}</div>
-                    <div className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>
-                      {t('aboutDesc')}
-                    </div>
+            {/* About */}
+            <button 
+              onClick={() => navigate('/about')}
+              className="w-full flex items-center justify-between p-4 hover:bg-black/5 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-gray-400">info</span>
+                <div className="text-left">
+                  <div className="text-sm font-semibold">{t('about')}</div>
+                  <div className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>
+                    {t('aboutDesc')}
                   </div>
                 </div>
-                <span className="material-symbols-outlined text-gray-400 text-sm">chevron_right</span>
-              </button>
+              </div>
+              <span className="material-symbols-outlined text-gray-400 text-sm">chevron_right</span>
+            </button>
             </div>
 
             {/* Danger Zone */}
