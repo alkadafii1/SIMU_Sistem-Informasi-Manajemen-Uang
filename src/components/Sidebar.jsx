@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 function Sidebar({ userData, userAvatar, userInitial }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDarkMode } = useTheme();
+  const { t } = useLanguage();
   const [collapsed, setCollapsed] = useState(false);
 
   const menuItems = [
-    { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
-    { path: '/transaction', icon: 'add_card', label: 'Transaksi' },
-    { path: '/history', icon: 'receipt_long', label: 'Riwayat' },
-    { path: '/settings', icon: 'settings', label: 'Pengaturan' },
+    { path: '/dashboard', icon: 'dashboard', label: t('dashboard') },
+    { path: '/transaction', icon: 'add_card', label: t('transactions') },
+    { path: '/history', icon: 'receipt_long', label: t('history') },
+    { path: '/settings', icon: 'settings', label: t('settings') },
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -31,13 +33,13 @@ function Sidebar({ userData, userAvatar, userInitial }) {
 
   return (
     <>
-      {/* Sidebar */}
+      {/* Dekstop Sidebar */}
       <aside
         className={`hidden md:flex flex-col fixed left-0 top-0 h-screen z-40 ${sidebarBg} border-r ${borderColor} transition-all duration-300 ${
           collapsed ? 'w-14' : 'w-52'
         }`}
       >
-        {/* Tombol Minimaze */}
+        {/* Tombol Minimize */}
         <div className={`py-3 ${collapsed ? 'px-2' : 'px-3'} border-b ${borderTopColor}`}>
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -48,7 +50,7 @@ function Sidebar({ userData, userAvatar, userInitial }) {
               {collapsed ? 'menu' : 'chevron_left'}
             </span>
             {!collapsed && (
-              <span className="text-xs ml-1">Sembunyikan</span>
+              <span className="text-xs ml-1">{t('collapse') || 'Sembunyikan'}</span>
             )}
           </button>
         </div>
@@ -59,8 +61,12 @@ function Sidebar({ userData, userAvatar, userInitial }) {
             onClick={() => navigate('/dashboard')}
             className={`flex items-center cursor-pointer ${collapsed ? 'justify-center' : 'gap-2'}`}
           >
-            <div className="w-7 h-7 rounded-lg bg-[#00685f] flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold">S</span>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <img 
+                src="/favicon.webp" 
+                alt="SIMU Logo" 
+                className="w-full h-full object-cover rounded-lg"
+              />
             </div>
             {!collapsed && (
               <span className={`text-base font-bold ${logoTextColor}`}>SIMU</span>
@@ -115,8 +121,39 @@ function Sidebar({ userData, userAvatar, userInitial }) {
         </div>
       </aside>
 
-      {/* Spacer untuk konten utama */}
+      {/* Spacer untuk desktop */}
       <div className={`hidden md:block transition-all duration-300 ${collapsed ? 'w-14' : 'w-52'}`} />
+
+      {/* Mobile Navigation */}
+      <nav className={`fixed bottom-0 left-0 right-0 z-50 border-t flex justify-around items-center h-16 px-4 md:hidden ${
+        isDarkMode ? 'bg-[#1f2937] border-gray-700' : 'bg-white border-gray-200'
+      }`}>
+        {menuItems.map((item) => (
+          <button
+            key={item.path}
+            onClick={() => navigate(item.path)}
+            className={`flex flex-col items-center justify-center transition-all ${
+              isActive(item.path)
+                ? 'text-[#00685f]'
+                : isDarkMode ? 'text-gray-400' : 'text-gray-400'
+            }`}
+          >
+            <span 
+              className="material-symbols-outlined text-base"
+              style={isActive(item.path) ? { fontVariationSettings: "'FILL' 1" } : {}}
+            >
+              {item.icon}
+            </span>
+            <span className={`text-[10px] font-medium mt-0.5 ${
+              isActive(item.path) ? 'font-bold' : ''
+            }`}>
+              {item.label}
+            </span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="block md:hidden h-16" />
     </>
   );
 }
