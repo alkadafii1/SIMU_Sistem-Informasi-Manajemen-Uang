@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import IncomeInput from '../components/SetupFinancial/IncomeInput';
@@ -10,6 +10,7 @@ import { ALLOCATION_COLORS } from '../constants/setupData';
 const SetupFinancial = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
   
   // State pendapatan
   const [income, setIncome] = useState(5000000);
@@ -24,6 +25,44 @@ const SetupFinancial = () => {
 
   const totalPercentage = pctKebutuhan + pctKeinginan + pctTabungan;
   const isValid = totalPercentage === 100 && income > 0;
+
+  // Cek apakah user sudah pernah setup sebelumnya
+  useEffect(() => {
+    const checkExistingSetup = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/login');
+          return;
+        }
+        
+        const response = await api.get('/user/setup');
+        
+        // Jika sudah pernah setup, redirect ke dashboard dengan pesan
+        if (response.data.success && response.data.setup) {
+          navigate('/dashboard', { 
+            state: { 
+              message: '⚠️ Anda sudah melakukan setup finansial sebelumnya. Jika ingin mengubah alokasi, silakan gunakan menu Pengaturan.' 
+            }
+          });
+        }
+      } catch (error) {
+        // Jika 404 (belum pernah setup), biarkan tetap di halaman
+        if (error.response?.status !== 404) {
+          console.error('Error checking setup:', error);
+          // Jika error lain (401 unauthorized), redirect ke login
+          if (error.response?.status === 401) {
+            localStorage.clear();
+            navigate('/login');
+          }
+        }
+      } finally {
+        setChecking(false);
+      }
+    };
+    
+    checkExistingSetup();
+  }, [navigate]);
 
   // Hitung nominal
   const kebutuhanNominal = (income * pctKebutuhan) / 100;
@@ -106,6 +145,14 @@ const SetupFinancial = () => {
     setPctTabungan(newVal);
     setPctKeinginan(100 - pctKebutuhan - newVal);
   };
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-gradient-to-tr from-slate-50 via-white to-[#f0f7f6] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1E4D4A]"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-tr from-slate-50 via-white to-[#f0f7f6] font-sans">
@@ -223,6 +270,16 @@ const SetupFinancial = () => {
               </p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Informasi Penting */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 shadow-md">
+          <p className="text-xs text-amber-700 flex items-center gap-2">
+            <span className="material-symbols-outlined text-sm">info</span>
+            ⚠️ Setup hanya dilakukan SEKALI. Alokasi ini akan digunakan untuk dashboard Anda.
+          </p>
         </div>
       </div>
     </div>
