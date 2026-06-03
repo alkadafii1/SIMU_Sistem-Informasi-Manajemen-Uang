@@ -69,6 +69,23 @@ function Login() {
     setTimeout(() => setLoginError(false), 3500);
   }, []);
 
+  // Cek apakah user sudah pernah setup
+  const checkUserSetup = async (token) => {
+    try {
+      const response = await api.get('/user/setup', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      // Jika response 200 (setup ditemukan)
+      return response.data.success && response.data.setup;
+    } catch (error) {
+      // Jika 404 (setup not found)
+      if (error.response?.status === 404) {
+        return false;
+      }
+      throw error;
+    }
+  };
+
   const handleManualLogin = useCallback(async (e) => {
     e.preventDefault();
     
@@ -96,7 +113,18 @@ function Login() {
         localStorage.setItem('token', token);
         localStorage.setItem('user_name', user.name);
         localStorage.setItem('user_email', user.email);
-        navigate('/setup-financial');
+        localStorage.setItem('user_id', user.id);
+        
+        // Cek apakah user pernah setup
+        const hasSetup = await checkUserSetup(token);
+        
+        if (hasSetup) {
+          // Jika sudah, redirect dashboard
+          navigate('/dashboard');
+        } else {
+          // Jika belum, redirect setup finansial
+          navigate('/setup-financial');
+        }
       }
     } catch (error) {
       const message = error.response?.data?.message || 'Email atau password salah';
@@ -119,9 +147,21 @@ function Login() {
         localStorage.setItem('token', token);
         localStorage.setItem('user_name', user.name);
         localStorage.setItem('user_email', user.email);
-        navigate('/setup-financial');
+        localStorage.setItem('user_id', user.id);
+        
+        // Cek apakah sudah pernah setup
+        const hasSetup = await checkUserSetup(token);
+        
+        if (hasSetup) {
+          // Jika sudah, redirect dashboard
+          navigate('/dashboard');
+        } else {
+          // Jika belum, redirect setup finansial
+          navigate('/setup-financial');
+        }
       }
     } catch (error) {
+      console.error('Google login error:', error);
       showError('Login dengan Google gagal, silakan coba lagi');
     } finally {
       setIsLoggingIn(false);
@@ -158,50 +198,44 @@ function Login() {
       {/* Loading Overlay */}
       {isLoggingIn && <LoadingOverlay />}
 
-{/* Left Panel - Branding */}
-<div className="hidden md:flex md:w-1/2 bg-gradient-to-br from-teal-700 via-teal-800 to-emerald-900 relative overflow-hidden flex-col items-center justify-center p-10 lg:p-12">
-  {/* Background Pattern - Simplified */}
-  <div className="absolute inset-0">
-    <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-emerald-400/10 blur-3xl"></div>
-    <div className="absolute bottom-20 right-20 w-80 h-80 rounded-full bg-teal-400/10 blur-3xl"></div>
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-white/5 blur-3xl"></div>
-  </div>
-  
-  {/* Decorative blobs */}
-  <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl"></div>
-  <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-400/20 rounded-full blur-3xl"></div>
-  
-  {/* Content - Centered */}
-  <div className="relative z-10 text-center max-w-md">
-    {/* Icon Logo */}
-<div className="flex justify-center mb-6">
-  <div className="bg-white/90 backdrop-blur-sm rounded-full shadow-xl border border-white/20 inline-flex p-1">
-    <img src="/favicon.webp" alt="Logo" className="w-12 h-12 object-contain rounded-full" />
-  </div>
-</div>
+      {/* Left Panel - Branding */}
+      <div className="hidden md:flex md:w-1/2 bg-gradient-to-br from-teal-700 via-teal-800 to-emerald-900 relative overflow-hidden flex-col items-center justify-center p-10 lg:p-12">
+        <div className="absolute inset-0">
+          <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-emerald-400/10 blur-3xl"></div>
+          <div className="absolute bottom-20 right-20 w-80 h-80 rounded-full bg-teal-400/10 blur-3xl"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-white/5 blur-3xl"></div>
+        </div>
+        
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-400/20 rounded-full blur-3xl"></div>
+        
+        <div className="relative z-10 text-center max-w-md">
+          <div className="flex justify-center mb-6">
+            <div className="bg-white/90 backdrop-blur-sm rounded-full shadow-xl border border-white/20 inline-flex p-1">
+              <img src="/favicon.webp" alt="Logo" className="w-12 h-12 object-contain rounded-full" />
+            </div>
+          </div>
 
-    {/* Hero Text */}
-    <h1 className="text-4xl lg:text-5xl font-black text-white mb-5 leading-tight tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
-      Kelola keuangan<br />
-      <span className="bg-gradient-to-r from-teal-300 via-emerald-300 to-teal-200 bg-clip-text text-transparent">lebih cerdas</span><br />
-      bersama SIMU
-    </h1>
-    
-    {/* Description */}
-    <p className="text-teal-100/80 text-sm leading-relaxed max-w-sm mx-auto" style={{ fontFamily: 'Inter, sans-serif' }}>
-      Catat, rencanakan, dan analisis keuanganmu dengan metode alokasi yang terbukti efektif.
-    </p>
-  </div>
-</div>
+          <h1 className="text-4xl lg:text-5xl font-black text-white mb-5 leading-tight tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
+            Kelola keuangan<br />
+            <span className="bg-gradient-to-r from-teal-300 via-emerald-300 to-teal-200 bg-clip-text text-transparent">lebih cerdas</span><br />
+            bersama SIMU
+          </h1>
+          
+          <p className="text-teal-100/80 text-sm leading-relaxed max-w-sm mx-auto" style={{ fontFamily: 'Inter, sans-serif' }}>
+            Catat, rencanakan, dan analisis keuanganmu dengan metode alokasi yang terbukti efektif.
+          </p>
+        </div>
+      </div>
 
       {/* Right Panel - Login Form */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-8 py-10">
 
         {/* Mobile logo */}
         <div className="flex md:hidden items-center gap-3 mb-8 self-start">
-        <div className="bg-white/90 backdrop-blur-sm rounded-full shadow-xl border border-white/20 inline-flex p-1">
-          <img src="/favicon.webp" alt="Logo" className="w-12 h-12 object-contain rounded-full" />
-        </div>
+          <div className="bg-white/90 backdrop-blur-sm rounded-full shadow-xl border border-white/20 inline-flex p-1">
+            <img src="/favicon.webp" alt="Logo" className="w-12 h-12 object-contain rounded-full" />
+          </div>
           <span className="text-teal-700 font-black text-xl tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
             SIMU
           </span>
@@ -230,16 +264,16 @@ function Login() {
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <span className="material-symbols-outlined text-slate-400 text-lg group-focus-within:text-teal-500 transition-colors">mail</span>
                 </div>
-              <input
-                id="email"
-                type="email"
-                required
-                value={typedEmail}
-                onChange={(e) => setTypedEmail(e.target.value)}
-                placeholder="Masukkan Email"
-                className="w-full pl-12 pr-4 py-3.5 bg-white border-2 border-slate-100 rounded-xl text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-teal-400 focus:ring-4 focus:ring-teal-100 transition-all
-                  [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_white]"
-              />
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={typedEmail}
+                  onChange={(e) => setTypedEmail(e.target.value)}
+                  placeholder="Masukkan Email"
+                  className="w-full pl-12 pr-4 py-3.5 bg-white border-2 border-slate-100 rounded-xl text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-teal-400 focus:ring-4 focus:ring-teal-100 transition-all
+                    [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_white]"
+                />
               </div>
             </div>
 
@@ -269,7 +303,7 @@ function Login() {
                   onChange={(e) => setTypedPassword(e.target.value)}
                   placeholder="Masukkan Password"
                   className="w-full pl-12 pr-12 py-3.5 bg-white border-2 border-slate-100 rounded-xl text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-teal-400 focus:ring-4 focus:ring-teal-100 transition-all
-                   [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_white]"
+                    [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_white]"
                 />
                 <button
                   type="button"
@@ -305,7 +339,7 @@ function Login() {
             </div>
           </div>
 
-          {/* Google Login Button - Styled wrapper */}
+          {/* Google Login Button */}
           <div className="flex justify-center w-full transform transition-all hover:scale-[1.02]">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
