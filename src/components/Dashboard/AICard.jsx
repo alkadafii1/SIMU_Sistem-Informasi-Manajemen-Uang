@@ -15,6 +15,7 @@ const AICard = ({
   textPrimary,
   textSecondary,
   t,
+  isOnline,
 }) => {
   return (
     <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm overflow-hidden`}>
@@ -69,18 +70,28 @@ const AICard = ({
               <p className={`${textPrimary} text-sm leading-relaxed`}>{prediction.recommendation}</p>
             </div>
 
-            <div className={`text-[10px] ${textSecondary} flex items-center gap-2`}>
-              {prediction.source === 'generative_ai_gemini' && (
-                <>
-                  <span className="material-symbols-outlined text-xs">bolt</span>
-                  ✨ Dihasilkan oleh Gemini AI
-                </>
-              )}
-              {prediction.is_fallback && (
-                <>
-                  <span className="material-symbols-outlined text-xs">cloud_off</span>
-                  📝 Prediksi sementara (mode offline)
-                </>
+            <div className={`text-[10px] ${textSecondary} flex flex-wrap items-center justify-between gap-2`}>
+              <div className="flex items-center gap-2">
+                {prediction.source === 'generative_ai_gemini' && (
+                  <>
+                    <span className="material-symbols-outlined text-xs">bolt</span>
+                    <span>✨ Dihasilkan oleh Gemini AI</span>
+                  </>
+                )}
+                {prediction.is_fallback && (
+                  <>
+                    <span className="material-symbols-outlined text-xs">cloud_off</span>
+                    <span>📝 Prediksi sementara (mode offline)</span>
+                  </>
+                )}
+              </div>
+              
+              {/* Indikator offline mode di dalam AICard */}
+              {!isOnline && !prediction.is_fallback && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-900/30 rounded-full">
+                  <span className="material-symbols-outlined text-amber-500 text-xs">cloud_off</span>
+                  <span className="text-amber-600 dark:text-amber-400 text-[9px]">{t('offlineMode') || 'Offline'}</span>
+                </div>
               )}
             </div>
           </div>

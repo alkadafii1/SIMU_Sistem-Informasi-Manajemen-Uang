@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useThemeStyles } from '../hooks/useThemeStyles';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 
 function HistoryPage() {
   const navigate = useNavigate();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
+  const { t, tc } = useLanguage();
   
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactions, setTransactions] = useState([]);
@@ -30,10 +32,10 @@ function HistoryPage() {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
     setUserData({
-      name: storedName || 'Pengguna',
+      name: storedName || t('user') || 'Pengguna',
       email: storedEmail || 'email@example.com'
     });
-  }, []);
+  }, [t]);
 
   // Cek autentikasi
   useEffect(() => {
@@ -54,9 +56,9 @@ function HistoryPage() {
     const diffTime = Math.abs(now - date);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) return 'Hari ini';
-    if (diffDays === 1) return 'Kemarin';
-    if (diffDays <= 7) return `${diffDays} hari lalu`;
+    if (diffDays === 0) return t('today');
+    if (diffDays === 1) return t('yesterday') || 'Kemarin';
+    if (diffDays <= 7) return `${diffDays} ${t('daysAgo') || 'hari lalu'}`;
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
@@ -128,13 +130,13 @@ function HistoryPage() {
         localStorage.clear();
         navigate('/login');
       } else {
-        showToast('Gagal memuat data transaksi', 'error');
+        showToast(t('errorOccurred'), 'error');
       }
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [typeFilter, timeFilter, searchQuery, sortOrder, page, navigate]);
+  }, [typeFilter, timeFilter, searchQuery, sortOrder, page, navigate, t]);
 
   useEffect(() => {
     fetchTransactions(true);
@@ -144,11 +146,11 @@ function HistoryPage() {
   const handleDeleteTransaction = async (id) => {
     try {
       await api.delete(`/transactions/${id}`);
-      showToast('Transaksi berhasil dihapus', 'success');
+      showToast(t('deleteSuccess'), 'success');
       fetchTransactions(true);
     } catch (error) {
       console.error('Gagal menghapus transaksi:', error);
-      showToast(error.response?.data?.message || 'Gagal menghapus transaksi', 'error');
+      showToast(error.response?.data?.message || t('errorOccurred'), 'error');
     } finally {
       setShowDeleteConfirm(null);
     }
@@ -158,14 +160,14 @@ function HistoryPage() {
   const handleExportCSV = () => {
     const filtered = transactions;
     if (filtered.length === 0) {
-      showToast('Tidak ada data untuk diekspor', 'error');
+      showToast(t('noTransactions'), 'error');
       return;
     }
 
-    const headers = ['Tanggal', 'Tipe', 'Kategori', 'Deskripsi', 'Jumlah'];
+    const headers = [t('date'), t('type'), t('category'), t('description'), t('amount')];
     const csvData = filtered.map(trx => [
       trx.date,
-      trx.type === 'expense' ? 'Pengeluaran' : 'Pemasukan',
+      trx.type === 'expense' ? t('expense') : t('income'),
       trx.category,
       trx.description || '-',
       trx.type === 'expense' ? `-${trx.amount}` : trx.amount
@@ -186,7 +188,7 @@ function HistoryPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    showToast('Data berhasil diekspor', 'success');
+    showToast(t('saveSuccess'), 'success');
   };
 
   // Hitung statistik
@@ -207,7 +209,7 @@ function HistoryPage() {
       <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00685f] mx-auto mb-4"></div>
-          <p className={textSecondary}>Memuat riwayat transaksi...</p>
+          <p className={textSecondary}>{t('loading')}</p>
         </div>
       </div>
     );
@@ -249,24 +251,24 @@ function HistoryPage() {
           <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-xl">
             <div className="flex items-center gap-3 mb-4">
               <span className="material-symbols-outlined text-3xl text-rose-600">warning</span>
-              <h3 className="text-lg font-bold text-gray-800">Hapus Transaksi?</h3>
+              <h3 className="text-lg font-bold text-gray-800">{t('deleteConfirm') || 'Hapus Transaksi?'}</h3>
             </div>
             <p className="text-gray-600 mb-2">
-              Apakah Anda yakin ingin menghapus transaksi ini?
+              {t('deleteWarning') || 'Apakah Anda yakin ingin menghapus transaksi ini?'}
             </p>
-            <p className="text-sm text-gray-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p>
+            <p className="text-sm text-gray-500 mb-6">{t('deleteUndone') || 'Tindakan ini tidak dapat dibatalkan.'}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
                 className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-medium hover:bg-gray-50 transition-all"
               >
-                Batal
+                {t('cancel')}
               </button>
               <button
                 onClick={() => handleDeleteTransaction(showDeleteConfirm)}
                 className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all"
               >
-                Hapus
+                {t('delete') || 'Hapus'}
               </button>
             </div>
           </div>
@@ -281,9 +283,9 @@ function HistoryPage() {
           <div className={`${cardBg} border-b ${borderColor} px-4 md:px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
               <div>
-                <h1 className={`text-xl font-bold ${textPrimary}`}>Riwayat Aktivitas</h1>
+                <h1 className={`text-xl font-bold ${textPrimary}`}>{t('activityHistory')}</h1>
                 <p className={`text-xs ${textSecondary} mt-0.5`}>
-                  Kelola dan lihat semua transaksi keuangan Anda
+                  {t('manageTransactions')}
                 </p>
               </div>
               <button
@@ -291,7 +293,7 @@ function HistoryPage() {
                 className={`flex items-center justify-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all shadow-sm`}
               >
                 <span className="material-symbols-outlined text-base">download</span>
-                Export CSV
+                {t('exportCSV')}
               </button>
             </div>
           </div>
@@ -305,7 +307,7 @@ function HistoryPage() {
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>Total Transaksi</p>
+                      <p className={`text-xs ${textSecondary}`}>{t('totalTransactions')}</p>
                       <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{statistics.totalTransactions}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-gray-400">receipt_long</span>
@@ -314,7 +316,7 @@ function HistoryPage() {
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>Total Pemasukan</p>
+                      <p className={`text-xs ${textSecondary}`}>{t('totalIncome')}</p>
                       <p className="text-base md:text-2xl font-bold text-emerald-600">{formatRupiah(statistics.totalIncome)}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-emerald-500">arrow_upward</span>
@@ -323,7 +325,7 @@ function HistoryPage() {
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>Total Pengeluaran</p>
+                      <p className={`text-xs ${textSecondary}`}>{t('totalExpense')}</p>
                       <p className="text-base md:text-2xl font-bold text-rose-600">{formatRupiah(statistics.totalExpense)}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-rose-500">arrow_downward</span>
@@ -339,7 +341,7 @@ function HistoryPage() {
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
                     <input
                       type="text"
-                      placeholder="Cari transaksi..."
+                      placeholder={t('search')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className={`w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
@@ -352,9 +354,9 @@ function HistoryPage() {
                     onChange={(e) => setTypeFilter(e.target.value)}
                     className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
                   >
-                    <option value="semua">Semua Tipe</option>
-                    <option value="income">Pemasukan</option>
-                    <option value="expense">Pengeluaran</option>
+                    <option value="semua">{t('allTypes')}</option>
+                    <option value="income">{t('income')}</option>
+                    <option value="expense">{t('expense')}</option>
                   </select>
 
                   {/* Filter Waktu */}
@@ -363,10 +365,10 @@ function HistoryPage() {
                     onChange={(e) => setTimeFilter(e.target.value)}
                     className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
                   >
-                    <option value="semua">Semua Waktu</option>
-                    <option value="hariIni">Hari Ini</option>
-                    <option value="mingguIni">Minggu Ini</option>
-                    <option value="bulanIni">Bulan Ini</option>
+                    <option value="semua">{t('allTime')}</option>
+                    <option value="hariIni">{t('today')}</option>
+                    <option value="mingguIni">{t('thisWeek')}</option>
+                    <option value="bulanIni">{t('thisMonth')}</option>
                   </select>
 
                   {/* Sort Order */}
@@ -377,7 +379,7 @@ function HistoryPage() {
                     <span className="material-symbols-outlined text-base">
                       {sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}
                     </span>
-                    {sortOrder === 'desc' ? 'Terbaru' : 'Terlama'}
+                    {sortOrder === 'desc' ? t('newest') : t('oldest')}
                   </button>
                 </div>
               </div>
@@ -389,11 +391,11 @@ function HistoryPage() {
                   <table className="w-full">
                     <thead className={`bg-gray-50 dark:bg-gray-800 border-b ${borderColor}`}>
                       <tr>
-                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>Tanggal</th>
-                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>Kategori</th>
-                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>Deskripsi</th>
-                        <th className={`text-right px-6 py-3 text-xs font-semibold ${textSecondary}`}>Jumlah</th>
-                        <th className={`text-center px-6 py-3 text-xs font-semibold ${textSecondary}`}>Aksi</th>
+                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('date')}</th>
+                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('category')}</th>
+                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('description')}</th>
+                        <th className={`text-right px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('amount')}</th>
+                        <th className={`text-center px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('action')}</th>
                       </tr>
                     </thead>
                     <tbody className={`divide-y ${borderColor}`}>
@@ -401,12 +403,12 @@ function HistoryPage() {
                         <tr>
                           <td colSpan="5" className="text-center py-12">
                             <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
-                            <p className={`text-sm ${textSecondary}`}>Belum ada transaksi</p>
+                            <p className={`text-sm ${textSecondary}`}>{t('noTransactions')}</p>
                             <button
                               onClick={() => navigate('/transaction')}
                               className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
                             >
-                              + Catat transaksi pertama
+                              + {t('firstTransaction')}
                             </button>
                           </td>
                         </tr>
@@ -443,7 +445,7 @@ function HistoryPage() {
                               <button
                                 onClick={() => setShowDeleteConfirm(transaction.id)}
                                 className="text-gray-400 hover:text-rose-600 transition-all"
-                                title="Hapus transaksi"
+                                title={t('delete')}
                               >
                                 <span className="material-symbols-outlined text-base">delete</span>
                               </button>
@@ -460,12 +462,12 @@ function HistoryPage() {
                   {transactions.length === 0 ? (
                     <div className="text-center py-12">
                       <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
-                      <p className={`text-sm ${textSecondary}`}>Belum ada transaksi</p>
+                      <p className={`text-sm ${textSecondary}`}>{t('noTransactions')}</p>
                       <button
                         onClick={() => navigate('/transaction')}
                         className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
                       >
-                        + Catat transaksi pertama
+                        + {t('firstTransaction')}
                       </button>
                     </div>
                   ) : (
@@ -484,7 +486,7 @@ function HistoryPage() {
                               <span className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</span>
                             </div>
                             <p className={`text-xs ${textSecondary} mt-1`}>
-                              {transaction.description || 'Tidak ada catatan'}
+                              {transaction.description || t('noDescription') || 'Tidak ada catatan'}
                             </p>
                           </div>
                           <button
@@ -521,10 +523,10 @@ function HistoryPage() {
                       {loadingMore ? (
                         <span className="flex items-center gap-2">
                           <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
-                          Memuat...
+                          {t('loading')}
                         </span>
                       ) : (
-                        'Muat Lebih Banyak'
+                        t('loadMore')
                       )}
                     </button>
                   </div>
@@ -534,7 +536,7 @@ function HistoryPage() {
               {/* Info Footer */}
               {transactions.length > 0 && (
                 <div className={`text-center text-xs ${textSecondary}`}>
-                  Menampilkan {transactions.length} dari {totalCount} transaksi
+                  {t('showing') || 'Menampilkan'} {transactions.length} {t('of') || 'dari'} {totalCount} {t('transactions') || 'transaksi'}
                 </div>
               )}
             </div>

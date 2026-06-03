@@ -9,6 +9,7 @@ import { formatRupiah } from '../utils/format';
 import { getGreeting } from '../utils/dashboard/greeting';
 import { getStatusColor, getStatusIcon, getStatusText } from '../utils/dashboard/aiHelpers';
 import { NEEDS_CATEGORIES, WANTS_CATEGORIES, WEEK_DAYS } from '../constants/categories';
+import useOnlineStatus from '../hooks/dashboard/useOnlineStatus';
 
 // Import components
 import Sidebar from '../components/Sidebar';
@@ -28,7 +29,8 @@ function Dashboard() {
   const { prediction: aiPrediction, loading: aiLoading, error: aiError, fetchPrediction, refreshPrediction } = useAIPrediction();
   const { showPopup: showWelcomePopup, progress: popupProgress, closePopup } = usePopup(location);
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
-  const { t } = useLanguage();
+  const { t, tc } = useLanguage();
+  const isOnline = useOnlineStatus();
   
   // Ref untuk mencegah multiple fetch
   const aiFetchedRef = useRef(false);
@@ -81,6 +83,8 @@ function Dashboard() {
   const wantsUsedPercent = budgetWants > 0 ? (totalExpenseWants / budgetWants) * 100 : 0;
   const savingsPercent = budgetSavings > 0 ? (savingsAchieved / budgetSavings) * 100 : 0;
 
+  const translatedWeekDays = Array.isArray(t('weekDays')) ? t('weekDays') : WEEK_DAYS;
+
   return (
     <div className={`min-h-screen ${bgColor}`}>
       <style>{`
@@ -124,13 +128,21 @@ function Dashboard() {
         <Sidebar userData={userData} userAvatar={userAvatar} userInitial={userInitial} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
+          {/* Header dengan indikator Offline Mode */}
           <div className={`${cardBg} border-b ${borderColor} px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex justify-between items-center">
               <div>
                 <h1 className={`text-xl font-bold ${textPrimary}`}>{getGreeting(userData.name, t)}</h1>
                 <p className={`text-xs ${textSecondary} mt-0.5`}>{t('manageFinance')}</p>
               </div>
+              
+              {/* Indikator Offline Mode */}
+              {!isOnline && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-sm">cloud_off</span>
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{t('offlineMode') || 'Offline Mode'}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -165,6 +177,7 @@ function Dashboard() {
               textPrimary={textPrimary}
               textSecondary={textSecondary}
               t={t}
+              isOnline={isOnline}
             />
 
             <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4 flex items-center gap-3`}>
@@ -212,12 +225,13 @@ function Dashboard() {
                 textPrimary={textPrimary}
                 textSecondary={textSecondary}
                 t={t}
+                tc={tc}
               />
             </div>
 
             <WeeklyChart
               weeklyExpenses={weeklyExpenses}
-              weekDays={WEEK_DAYS}
+              weekDays={translatedWeekDays}
               formatRupiah={formatRupiah}
               cardBg={cardBg}
               borderColor={borderColor}
@@ -235,6 +249,7 @@ function Dashboard() {
               textPrimary={textPrimary}
               textSecondary={textSecondary}
               t={t}
+              tc={tc}
             />
           </div>
         </div>

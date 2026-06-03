@@ -6,15 +6,37 @@ import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 
+// Daftar kategori asli
+const ORIGINAL_EXPENSE_CATEGORIES = [
+  'Makanan & Minuman',
+  'Belanja Harian',
+  'Transportasi',
+  'Tagihan & Utilitas',
+  'Hiburan & Hobi',
+  'Kesehatan',
+  'Pendidikan',
+  'Investasi',
+  'Lainnya'
+];
+
+const ORIGINAL_INCOME_CATEGORIES = [
+  'Gaji Bulanan',
+  'Bonus',
+  'Investasi',
+  'Proyek Sampingan',
+  'Hadiah',
+  'Lainnya'
+];
+
 function TransactionPage() {
   const navigate = useNavigate();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
-  const { t, tc } = useLanguage(); // Tambahkan hook language
+  const { t, tc } = useLanguage();
   
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactionType, setTransactionType] = useState('expense');
   const [amountString, setAmountString] = useState('');
-  const [category, setCategory] = useState('Makanan & Minuman');
+  const [category, setCategory] = useState(ORIGINAL_EXPENSE_CATEGORIES[0]); // 'Makanan & Minuman'
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [note, setNote] = useState('');
@@ -112,7 +134,7 @@ function TransactionPage() {
       if (amount > currentRemaining) {
         return {
           valid: false,
-          message: t('insufficientBalance') + ` ${t('remaining')}: ${formatRupiah(currentRemaining)}`
+          message: `${t('insufficientBalance')} ${t('remaining')}: ${formatRupiah(currentRemaining)}`
         };
       }
     }
@@ -159,60 +181,92 @@ function TransactionPage() {
     }
   };
 
-  // Daftar kategori dengan label terjemahan
-  const getExpenseCategories = () => [
-    t('Foods & Drinks') || 'Makanan & Minuman',
-    t('Daily Shopping') || 'Belanja Harian',
-    t('Transport') || 'Transportasi',
-    t('Bills') || 'Tagihan & Utilitas',
-    t('Entertainment') || 'Hiburan & Hobi',
-    t('Health') || 'Kesehatan',
-    t('Education') || 'Pendidikan',
-    t('Investment') || 'Investasi',
-    t('Other') || 'Lainnya'
-  ];
+  // Get translated categories for display (berdasarkan bahasa yang dipilih)
+  const getExpenseCategories = () => {
+    return ORIGINAL_EXPENSE_CATEGORIES.map(cat => tc(cat, 'expense'));
+  };
   
-  const getIncomeCategories = () => [
-    t('Salary') || 'Gaji Bulanan',
-    t('Bonus') || 'Bonus',
-    t('Investment') || 'Investasi',
-    t('Side Project') || 'Proyek Sampingan',
-    t('Gift') || 'Hadiah',
-    t('Other') || 'Lainnya'
-  ];
+  const getIncomeCategories = () => {
+    return ORIGINAL_INCOME_CATEGORIES.map(cat => tc(cat, 'income'));
+  };
 
-  // Handle kategori
-  const handleCategorySelect = (cat) => {
-    // Peta terjemahan balik ke kategori asli
-    const reverseMap = {
-      [t('FoodS & Drinks') || 'Makanan & Minuman']: 'Makanan & Minuman',
-      [t('Daily Shopping') || 'Belanja Harian']: 'Belanja Harian',
-      [t('Transport') || 'Transportasi']: 'Transportasi',
-      [t('Bills') || 'Tagihan & Utilitas']: 'Tagihan & Utilitas',
-      [t('Entertainment') || 'Hiburan & Hobi']: 'Hiburan & Hobi',
-      [t('Health') || 'Kesehatan']: 'Kesehatan',
-      [t('Education') || 'Pendidikan']: 'Pendidikan',
-      [t('Investment') || 'Investasi']: 'Investasi',
-      [t('Salary') || 'Gaji Bulanan']: 'Gaji Bulanan',
-      [t('Bonus') || 'Bonus']: 'Bonus',
-      [t('Side Project') || 'Proyek Sampingan']: 'Proyek Sampingan',
-      [t('Gift') || 'Hadiah']: 'Hadiah',
-      [t('Other') || 'Lainnya']: 'Lainnya'
-    };
+  // Helper untuk cek apakah kategori sedang aktif (menampilkan tanda select)
+  const isCategoryActive = (displayCategory) => {
+    // Jika sedang showCustomInput, tidak ada kategori yang aktif (karena pakai custom)
+    if (showCustomInput) {
+      return false;
+    }
     
-    const originalCat = reverseMap[cat] || cat;
+    // Untuk kategori 'Lainnya'
+    if (category === 'Lainnya') {
+      return displayCategory === 'Lainnya' || 
+             displayCategory === 'Others' || 
+             displayCategory === t('Other');
+    }
     
-    if (originalCat === 'Lainnya') {
+    // Dapatkan index dari displayCategory yang sedang ditampilkan
+    const currentDisplayCategories = transactionType === 'expense'
+      ? getExpenseCategories()
+      : getIncomeCategories();
+    
+    const index = currentDisplayCategories.findIndex(cat => cat === displayCategory);
+    
+    if (index !== -1) {
+      const originalCategories = transactionType === 'expense'
+        ? ORIGINAL_EXPENSE_CATEGORIES
+        : ORIGINAL_INCOME_CATEGORIES;
+      // Cek apakah kategori asli dari index ini sama dengan category state
+      return originalCategories[index] === category;
+    }
+    
+    return false;
+  };
+
+  // Handle kategori - menggunakan index untuk mapping ke kategori asli
+  const handleCategorySelect = (selectedDisplayCategory) => {
+    // Cek apakah yang dipilih adalah "Lainnya" (dalam bahasa apapun)
+    const isOthers = selectedDisplayCategory === 'Lainnya' || 
+                     selectedDisplayCategory === 'Others' ||
+                     selectedDisplayCategory === t('Other');
+    
+    if (isOthers) {
       setShowCustomInput(true);
       setCategory('Lainnya');
+      setCustomCategory('');
     } else {
       setShowCustomInput(false);
-      setCategory(originalCat);
+      // Cari kategori asli berdasarkan index
+      const currentDisplayCategories = transactionType === 'expense'
+        ? getExpenseCategories()
+        : getIncomeCategories();
+      
+      const index = currentDisplayCategories.findIndex(cat => cat === selectedDisplayCategory);
+      
+      if (index !== -1) {
+        const originalCategories = transactionType === 'expense'
+          ? ORIGINAL_EXPENSE_CATEGORIES
+          : ORIGINAL_INCOME_CATEGORIES;
+        setCategory(originalCategories[index]);
+      } else {
+        setCategory(selectedDisplayCategory);
+      }
       setCustomCategory('');
     }
   };
 
+  // Validasi apakah kategori sudah dipilih
+  const isCategoryValid = () => {
+    if (category === 'Lainnya' && !customCategory.trim()) {
+      return false;
+    }
+    if (!category || category === '') {
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveTransaction = async () => {
+    // Validasi nominal
     if (!amountString || amountString === '0') {
       showToast(t('errorOccurred'), 'error');
       return;
@@ -223,6 +277,12 @@ function TransactionPage() {
     const amountValidation = validateAmount(amountString);
     if (!amountValidation.valid) {
       showToast(amountValidation.message, 'error');
+      return;
+    }
+
+    // Validasi kategori
+    if (!isCategoryValid()) {
+      showToast(t('selectCategory'), 'error');
       return;
     }
 
@@ -274,7 +334,7 @@ function TransactionPage() {
         setNote('');
         setCustomCategory('');
         setShowCustomInput(false);
-        setCategory('Makanan & Minuman');
+        setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]);
         setTimeout(() => navigate('/dashboard'), 1500);
       }
     } catch (error) {
@@ -455,7 +515,7 @@ function TransactionPage() {
                 <button
                   onClick={() => {
                     setTransactionType('expense');
-                    setCategory('Makanan & Minuman');
+                    setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]);
                     setAmountString('');
                     setShowCustomInput(false);
                     setCustomCategory('');
@@ -472,7 +532,7 @@ function TransactionPage() {
                 <button
                   onClick={() => {
                     setTransactionType('income');
-                    setCategory('Gaji Bulanan');
+                    setCategory(ORIGINAL_INCOME_CATEGORIES[0]);
                     setAmountString('');
                     setShowCustomInput(false);
                     setCustomCategory('');
@@ -594,16 +654,16 @@ function TransactionPage() {
                       {t('selectCategory')}
                     </label>
                     <div className="grid grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
-                      {currentCategories.map(cat => (
+                      {currentCategories.map((cat) => (
                         <button
                           key={cat}
                           onClick={() => handleCategorySelect(cat)}
                           className={`py-3 px-4 rounded-lg text-sm font-medium text-center transition-all ${
-                            (category === cat || (category === 'Lainnya' && cat === t('category_other')))
+                            isCategoryActive(cat)
                               ? transactionType === 'expense'
-                                ? 'bg-rose-50 text-rose-600 border-2 border-rose-200'
-                                : 'bg-[#00685f]/5 text-[#00685f] border-2 border-[#00685f]/20'
-                              : `bg-gray-50 dark:bg-gray-800 ${textSecondary} border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700`
+                                ? 'bg-rose-50 text-rose-600 border-2 border-rose-200 shadow-sm'
+                                : 'bg-[#00685f]/10 text-[#00685f] border-2 border-[#00685f]/30 shadow-sm'
+                              : `bg-gray-50 dark:bg-gray-800 ${textSecondary} border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-200`
                           }`}
                         >
                           {cat}
