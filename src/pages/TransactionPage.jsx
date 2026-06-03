@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useThemeStyles } from '../hooks/useThemeStyles';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 
 function TransactionPage() {
   const navigate = useNavigate();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
+  const { t, tc } = useLanguage(); // Tambahkan hook language
   
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactionType, setTransactionType] = useState('expense');
@@ -110,7 +112,7 @@ function TransactionPage() {
       if (amount > currentRemaining) {
         return {
           valid: false,
-          message: `Saldo tidak mencukupi! Sisa budget Anda: ${formatRupiah(currentRemaining)}`
+          message: t('insufficientBalance') + ` ${t('remaining')}: ${formatRupiah(currentRemaining)}`
         };
       }
     }
@@ -120,16 +122,16 @@ function TransactionPage() {
   // Validasi jumlah
   const validateAmount = (value) => {
     const numValue = parseFloat(value);
-    if (isNaN(numValue)) return { valid: false, message: 'Nominal tidak valid' };
-    if (numValue <= 0) return { valid: false, message: 'Nominal harus lebih dari 0' };
-    if (numValue > 10000000000) return { valid: false, message: 'Nominal maksimal 10 Miliar' };
+    if (isNaN(numValue)) return { valid: false, message: t('errorOccurred') };
+    if (numValue <= 0) return { valid: false, message: t('minTransaction') };
+    if (numValue > 10000000000) return { valid: false, message: t('maxTransaction') };
     
     if (transactionType === 'expense' && numValue < 1000) {
-      return { valid: false, message: 'Minimal pengeluaran Rp 1.000' };
+      return { valid: false, message: t('minTransaction') };
     }
     
     if (transactionType === 'income' && numValue < 1000) {
-      return { valid: false, message: 'Minimal pemasukan Rp 1.000' };
+      return { valid: false, message: t('minTransaction') };
     }
     
     return { valid: true, message: '' };
@@ -157,21 +159,62 @@ function TransactionPage() {
     }
   };
 
+  // Daftar kategori dengan label terjemahan
+  const getExpenseCategories = () => [
+    t('Foods & Drinks') || 'Makanan & Minuman',
+    t('Daily Shopping') || 'Belanja Harian',
+    t('Transport') || 'Transportasi',
+    t('Bills') || 'Tagihan & Utilitas',
+    t('Entertainment') || 'Hiburan & Hobi',
+    t('Health') || 'Kesehatan',
+    t('Education') || 'Pendidikan',
+    t('Investment') || 'Investasi',
+    t('Other') || 'Lainnya'
+  ];
+  
+  const getIncomeCategories = () => [
+    t('Salary') || 'Gaji Bulanan',
+    t('Bonus') || 'Bonus',
+    t('Investment') || 'Investasi',
+    t('Side Project') || 'Proyek Sampingan',
+    t('Gift') || 'Hadiah',
+    t('Other') || 'Lainnya'
+  ];
+
   // Handle kategori
   const handleCategorySelect = (cat) => {
-    if (cat === 'Lainnya') {
+    // Peta terjemahan balik ke kategori asli
+    const reverseMap = {
+      [t('FoodS & Drinks') || 'Makanan & Minuman']: 'Makanan & Minuman',
+      [t('Daily Shopping') || 'Belanja Harian']: 'Belanja Harian',
+      [t('Transport') || 'Transportasi']: 'Transportasi',
+      [t('Bills') || 'Tagihan & Utilitas']: 'Tagihan & Utilitas',
+      [t('Entertainment') || 'Hiburan & Hobi']: 'Hiburan & Hobi',
+      [t('Health') || 'Kesehatan']: 'Kesehatan',
+      [t('Education') || 'Pendidikan']: 'Pendidikan',
+      [t('Investment') || 'Investasi']: 'Investasi',
+      [t('Salary') || 'Gaji Bulanan']: 'Gaji Bulanan',
+      [t('Bonus') || 'Bonus']: 'Bonus',
+      [t('Side Project') || 'Proyek Sampingan']: 'Proyek Sampingan',
+      [t('Gift') || 'Hadiah']: 'Hadiah',
+      [t('Other') || 'Lainnya']: 'Lainnya'
+    };
+    
+    const originalCat = reverseMap[cat] || cat;
+    
+    if (originalCat === 'Lainnya') {
       setShowCustomInput(true);
       setCategory('Lainnya');
     } else {
       setShowCustomInput(false);
-      setCategory(cat);
+      setCategory(originalCat);
       setCustomCategory('');
     }
   };
 
   const handleSaveTransaction = async () => {
     if (!amountString || amountString === '0') {
-      showToast('Masukkan nominal transaksi terlebih dahulu', 'error');
+      showToast(t('errorOccurred'), 'error');
       return;
     }
 
@@ -196,12 +239,12 @@ function TransactionPage() {
     if (category === 'Lainnya' && customCategory.trim()) {
       finalCategory = customCategory.trim();
     } else if (category === 'Lainnya' && !customCategory.trim()) {
-      showToast('Silakan isi kategori lainnya', 'error');
+      showToast(t('selectCategory'), 'error');
       return;
     }
 
     if (!finalCategory) {
-      showToast('Pilih kategori transaksi', 'error');
+      showToast(t('selectCategory'), 'error');
       return;
     }
 
@@ -225,7 +268,7 @@ function TransactionPage() {
       });
       
       if (response.data.success) {
-        showToast('Transaksi berhasil disimpan!', 'success');
+        showToast(t('saveSuccess'), 'success');
         await fetchFinancialData();
         setAmountString('');
         setNote('');
@@ -236,7 +279,7 @@ function TransactionPage() {
       }
     } catch (error) {
       console.error('Error saving transaction:', error);
-      let message = 'Terjadi kesalahan, silakan coba lagi';
+      let message = t('errorOccurred');
       
       if (error.response?.data?.message) {
         message = error.response.data.message;
@@ -272,27 +315,8 @@ function TransactionPage() {
                                  amountString && 
                                  parseFloat(amountString) > financialData.remaining;
 
-  const expenseCategories = [
-    'Makanan & Minuman',
-    'Belanja Harian',
-    'Transportasi',
-    'Tagihan & Utilitas',
-    'Hiburan & Hobi',
-    'Kesehatan',
-    'Pendidikan',
-    'Investasi',
-    'Lainnya'
-  ];
-  
-  const incomeCategories = [
-    'Gaji Bulanan',
-    'Bonus',
-    'Investasi',
-    'Proyek Sampingan',
-    'Hadiah',
-    'Lainnya'
-  ];
-  
+  const expenseCategories = getExpenseCategories();
+  const incomeCategories = getIncomeCategories();
   const currentCategories = transactionType === 'expense' ? expenseCategories : incomeCategories;
 
   // Hitung total pemasukan untuk ditampilkan di card
@@ -335,13 +359,13 @@ function TransactionPage() {
           <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-xl">
             <div className="flex items-center gap-3 mb-4">
               <span className="material-symbols-outlined text-3xl text-amber-600">warning</span>
-              <h3 className="text-lg font-bold text-gray-800">Konfirmasi Transaksi Besar</h3>
+              <h3 className="text-lg font-bold text-gray-800">{t('largeConfirm')}</h3>
             </div>
             <p className="text-gray-600 mb-2">
-              Anda akan melakukan transaksi sebesar <strong className="text-rose-600">{formatRupiah(parseFloat(amountString))}</strong>
+              {t('totalAmount')}: <strong className="text-rose-600">{formatRupiah(parseFloat(amountString))}</strong>
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              Sisa budget setelah transaksi: <strong className={previewRemaining < 0 ? 'text-rose-600' : 'text-[#00685f]'}>
+              {t('remainingAfter')}: <strong className={previewRemaining < 0 ? 'text-rose-600' : 'text-[#00685f]'}>
                 {formatRupiah(previewRemaining)}
               </strong>
             </p>
@@ -350,13 +374,13 @@ function TransactionPage() {
                 onClick={() => setShowConfirmDialog(false)}
                 className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-medium hover:bg-gray-50 transition-all"
               >
-                Batal
+                {t('cancel')}
               </button>
               <button
                 onClick={() => saveTransaction(parseFloat(amountString), category === 'Lainnya' && customCategory ? customCategory : category)}
                 className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all"
               >
-                Konfirmasi
+                {t('confirm')}
               </button>
             </div>
           </div>
@@ -371,9 +395,9 @@ function TransactionPage() {
           <div className={`${cardBg} border-b ${borderColor} px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex justify-between items-center">
               <div>
-                <h1 className={`text-xl font-bold ${textPrimary}`}>Catat Transaksi</h1>
+                <h1 className={`text-xl font-bold ${textPrimary}`}>{t('recordTransaction')}</h1>
                 <p className={`text-xs ${textSecondary} mt-0.5`}>
-                  {transactionType === 'expense' ? 'Catat pengeluaran Anda' : 'Catat pemasukan Anda'}
+                  {transactionType === 'expense' ? t('recordExpense') : t('recordIncome')}
                 </p>
               </div>
               <button
@@ -381,7 +405,7 @@ function TransactionPage() {
                 className={`flex items-center gap-2 ${borderColor} ${textSecondary} px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
               >
                 <span className="material-symbols-outlined text-sm">arrow_back</span>
-                Kembali
+                {t('back')}
               </button>
             </div>
           </div>
@@ -396,11 +420,11 @@ function TransactionPage() {
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-4 shadow-sm`}>
                     <div className="flex justify-between items-center">
                       <div>
-                        <p className={`text-xs ${textSecondary} mb-1`}>Sisa Budget Saat Ini</p>
+                        <p className={`text-xs ${textSecondary} mb-1`}>{t('remaining')} {t('budgetAllocation')}</p>
                         <p className={`text-2xl font-bold ${textPrimary}`}>{formatRupiah(financialData.remaining)}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`text-xs ${textSecondary} mb-1`}>Total Pemasukan</p>
+                        <p className={`text-xs ${textSecondary} mb-1`}>{t('totalIncome')}</p>
                         <p className={`font-semibold ${textPrimary}`}>{formatRupiah(totalPemasukan)}</p>
                       </div>
                     </div>
@@ -410,15 +434,15 @@ function TransactionPage() {
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 p-4 shadow-sm">
                     <div className="flex items-start gap-2">
                       <span className="material-symbols-outlined text-blue-500 text-base flex-shrink-0">info</span>
-                      <div className="text-xs text-blue-700 dark:text-blue-300 flex-1">
-                        <p className="font-semibold mb-1.5">💡 Tips & Aturan:</p>
+                      <div className={`text-xs text-blue-700 dark:text-blue-300 flex-1`}>
+                        <p className="font-semibold mb-1.5">💡 {t('tips')}:</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-                          <p>• Min transaksi Rp 1.000</p>
-                          <p>• Max transaksi Rp 10 Miliar</p>
-                          <p>• Tidak melebihi sisa budget</p>
-                          <p>• Konfirmasi di atas Rp 5.000.000</p>
-                          <p>• Pilih "Lainnya" jika perlu</p>
-                          <p>• Isi catatan agar mudah dilacak</p>
+                          <p>• {t('minTransaction')}</p>
+                          <p>• {t('maxTransaction')}</p>
+                          <p>• {t('noExceedBudget')}</p>
+                          <p>• {t('largeConfirm')}</p>
+                          <p>• {t('otherCategory')}</p>
+                          <p>• {t('fillNote')}</p>
                         </div>
                       </div>
                     </div>
@@ -443,7 +467,7 @@ function TransactionPage() {
                   }`}
                 >
                   <span className="material-symbols-outlined text-base mr-2">arrow_downward</span>
-                  Pengeluaran
+                  {t('expense')}
                 </button>
                 <button
                   onClick={() => {
@@ -460,7 +484,7 @@ function TransactionPage() {
                   }`}
                 >
                   <span className="material-symbols-outlined text-base mr-2">arrow_upward</span>
-                  Pemasukan
+                  {t('income')}
                 </button>
               </div>
 
@@ -472,7 +496,7 @@ function TransactionPage() {
                   {/* Card Total Nominal */}
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-6 text-center shadow-sm`}>
                     <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-2`}>
-                      Total Nominal
+                      {t('totalAmount')}
                     </label>
                     <div className={`text-3xl font-black tracking-tight ${
                       transactionType === 'expense' ? 'text-rose-600' : 'text-[#00685f]'
@@ -482,7 +506,7 @@ function TransactionPage() {
                     
                     {amountString && amountString !== '0' && (
                       <div className="mt-3 text-sm">
-                        <p className={`${textSecondary}`}>Sisa budget setelah transaksi:</p>
+                        <p className={`${textSecondary}`}>{t('remainingAfter')}:</p>
                         <p className={`font-bold ${previewRemaining < 0 ? 'text-rose-600' : 'text-[#00685f]'}`}>
                           {formatRupiah(previewRemaining)}
                         </p>
@@ -493,14 +517,14 @@ function TransactionPage() {
                       <div className="mt-3 p-2 bg-rose-50 border border-rose-200 rounded-lg">
                         <p className="text-xs text-rose-700 flex items-center justify-center gap-1">
                           <span className="material-symbols-outlined text-sm">warning</span>
-                          Saldo tidak mencukupi!
+                          {t('insufficientBalance')}
                         </p>
                       </div>
                     )}
 
                     {transactionType === 'expense' && amountString && parseFloat(amountString) > 5000000 && (
                       <div className="mt-3 text-xs text-amber-600 bg-amber-50 inline-block px-3 py-1 rounded-full">
-                        ⚠️ Transaksi besar (di atas 5 juta)
+                        ⚠️ {t('largeTransaction')}
                       </div>
                     )}
                   </div>
@@ -551,12 +575,12 @@ function TransactionPage() {
                     {loading ? (
                       <>
                         <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                        Menyimpan...
+                        {t('processing')}
                       </>
                     ) : (
                       <>
                         <span className="material-symbols-outlined">save</span>
-                        Simpan {transactionType === 'expense' ? 'Pengeluaran' : 'Pemasukan'}
+                        {t('save')} {transactionType === 'expense' ? t('expense') : t('income')}
                       </>
                     )}
                   </button>
@@ -567,7 +591,7 @@ function TransactionPage() {
                   {/* Kategori */}
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
                     <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-4`}>
-                      Pilih Kategori
+                      {t('selectCategory')}
                     </label>
                     <div className="grid grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
                       {currentCategories.map(cat => (
@@ -575,7 +599,7 @@ function TransactionPage() {
                           key={cat}
                           onClick={() => handleCategorySelect(cat)}
                           className={`py-3 px-4 rounded-lg text-sm font-medium text-center transition-all ${
-                            category === cat
+                            (category === cat || (category === 'Lainnya' && cat === t('category_other')))
                               ? transactionType === 'expense'
                                 ? 'bg-rose-50 text-rose-600 border-2 border-rose-200'
                                 : 'bg-[#00685f]/5 text-[#00685f] border-2 border-[#00685f]/20'
@@ -592,7 +616,7 @@ function TransactionPage() {
                       <div className="mt-3">
                         <input
                           type="text"
-                          placeholder="Tulis kategori lainnya..."
+                          placeholder={t('otherCategory')}
                           value={customCategory}
                           onChange={(e) => {
                             setCustomCategory(e.target.value);
@@ -601,7 +625,7 @@ function TransactionPage() {
                           className={`w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f]`}
                         />
                         <p className="text-[10px] text-gray-400 mt-1">
-                          Kategori akan tersimpan untuk transaksi ini
+                          {t('fillNote')}
                         </p>
                       </div>
                     )}
@@ -610,18 +634,18 @@ function TransactionPage() {
                   {/* Catatan */}
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
                     <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-2`}>
-                      Catatan (Opsional)
+                      {t('note')}
                     </label>
                     <textarea
                       rows="3"
-                      placeholder="Contoh: Makan siang di restoran, Beli baju baru, dll..."
+                      placeholder={t('fillNote')}
                       value={note}
                       onChange={e => setNote(e.target.value)}
                       maxLength={200}
                       className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm font-medium ${textPrimary} focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f] resize-none`}
                     />
                     <div className="text-right text-xs text-gray-400 mt-1">
-                      {note.length}/200 karakter
+                      {note.length}/200 {t('characters') || 'karakter'}
                     </div>
                   </div>
                   
@@ -638,12 +662,12 @@ function TransactionPage() {
                     {loading ? (
                       <>
                         <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                        Menyimpan...
+                        {t('processing')}
                       </>
                     ) : (
                       <>
                         <span className="material-symbols-outlined">save</span>
-                        Simpan {transactionType === 'expense' ? 'Pengeluaran' : 'Pemasukan'}
+                        {t('save')} {transactionType === 'expense' ? t('expense') : t('income')}
                       </>
                     )}
                   </button>
