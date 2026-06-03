@@ -2,14 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useThemeStyles } from '../hooks/useThemeStyles';
-import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 
 function HistoryPage() {
   const navigate = useNavigate();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
-  const { t, tc } = useLanguage();
   
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactions, setTransactions] = useState([]);
@@ -21,6 +19,7 @@ function HistoryPage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [sortOrder, setSortOrder] = useState('desc');
@@ -31,10 +30,10 @@ function HistoryPage() {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
     setUserData({
-      name: storedName || t('user') || 'Pengguna',
+      name: storedName || 'Pengguna',
       email: storedEmail || 'email@example.com'
     });
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -51,12 +50,16 @@ function HistoryPage() {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffTime = Math.abs(now - date);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) return t('today');
-    if (diffDays === 1) return t('yesterday') || 'Kemarin';
-    if (diffDays <= 7) return `${diffDays} ${t('daysAgo') || 'hari lalu'}`;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const transactionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    const diffTime = today - transactionDate;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Hari ini';
+    if (diffDays === 1) return 'Kemarin';
+    if (diffDays <= 7) return `${diffDays} hari lalu`;
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
@@ -74,19 +77,18 @@ function HistoryPage() {
       params.append('limit', ITEMS_PER_PAGE);
       params.append('page', reset ? 1 : page);
       
-      // Filter tipe
       if (typeFilter !== 'semua') {
         params.append('type', typeFilter);
       }
       
-      // Filter waktu
       const now = new Date();
       if (timeFilter === 'hariIni') {
         params.append('startDate', now.toISOString().split('T')[0]);
       } else if (timeFilter === 'mingguIni') {
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(now.getDate() - 7);
-        params.append('startDate', oneWeekAgo.toISOString().split('T')[0]);
+        const startOfWeek = new Date(now);
+        const day = now.getDay();
+        startOfWeek.setDate(now.getDate() - day);
+        params.append('startDate', startOfWeek.toISOString().split('T')[0]);
       } else if (timeFilter === 'bulanIni') {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         params.append('startDate', startOfMonth.toISOString().split('T')[0]);
@@ -95,76 +97,86 @@ function HistoryPage() {
       const response = await api.get(`/transactions?${params.toString()}`);
       
       let newTransactions = response.data.transactions || [];
+      const totalFromServer = response.data.count || newTransactions.length;
+      setTotalCount(totalFromServer);
       
-      // Filter search
+      let filteredBySearch = [...newTransactions];
       if (searchQuery) {
-        newTransactions = newTransactions.filter(trx => 
+        filteredBySearch = filteredBySearch.filter(trx => 
           (trx.description && trx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (trx.category && trx.category.toLowerCase().includes(searchQuery.toLowerCase()))
         );
+        setFilteredTotal(filteredBySearch.length);
+      } else {
+        setFilteredTotal(totalFromServer);
       }
       
-      // Sorting
-      newTransactions.sort((a, b) => {
+      filteredBySearch.sort((a, b) => {
         const dateA = new Date(a.date || a.createdAt);
         const dateB = new Date(b.date || b.createdAt);
         return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
       });
 
       if (reset) {
-        setTransactions(newTransactions);
+        setTransactions(filteredBySearch);
+        const hasMoreData = filteredBySearch.length === ITEMS_PER_PAGE && filteredBySearch.length < totalFromServer;
+        setHasMore(hasMoreData);
       } else {
-        setTransactions(prev => [...prev, ...newTransactions]);
-      }
-      
-      setTotalCount(response.data.count || newTransactions.length);
-      setHasMore(newTransactions.length === ITEMS_PER_PAGE);
-      
-      if (!reset) {
+        setTransactions(prev => {
+          const existingIds = new Set(prev.map(t => t.id));
+          const newUnique = filteredBySearch.filter(t => !existingIds.has(t.id));
+          const updated = [...prev, ...newUnique];
+          const hasMoreData = updated.length < totalFromServer && newUnique.length === ITEMS_PER_PAGE;
+          setHasMore(hasMoreData);
+          return updated;
+        });
         setPage(prev => prev + 1);
       }
+      
     } catch (error) {
       console.error('Gagal mengambil transaksi:', error);
       if (error.response?.status === 401) {
         localStorage.clear();
         navigate('/login');
+      } else if (error.response?.status === 500) {
+        setHasMore(false);
+        showToast('Data sudah habis', 'info');
       } else {
-        showToast(t('errorOccurred'), 'error');
+        showToast('Gagal memuat data', 'error');
       }
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [typeFilter, timeFilter, searchQuery, sortOrder, page, navigate, t]);
+  }, [typeFilter, timeFilter, searchQuery, sortOrder, page, navigate]);
 
   useEffect(() => {
     fetchTransactions(true);
-  }, [typeFilter, timeFilter, searchQuery, sortOrder, fetchTransactions]);
+  }, [typeFilter, timeFilter, searchQuery, sortOrder]);
 
   const handleDeleteTransaction = async (id) => {
     try {
       await api.delete(`/transactions/${id}`);
-      showToast(t('deleteSuccess'), 'success');
+      showToast('Transaksi berhasil dihapus', 'success');
       fetchTransactions(true);
     } catch (error) {
       console.error('Gagal menghapus transaksi:', error);
-      showToast(error.response?.data?.message || t('errorOccurred'), 'error');
+      showToast(error.response?.data?.message || 'Gagal menghapus transaksi', 'error');
     } finally {
       setShowDeleteConfirm(null);
     }
   };
 
   const handleExportCSV = () => {
-    const filtered = transactions;
-    if (filtered.length === 0) {
-      showToast(t('noTransactions'), 'error');
+    if (transactions.length === 0) {
+      showToast('Tidak ada data untuk diekspor', 'error');
       return;
     }
 
-    const headers = [t('date'), t('type'), t('category'), t('description'), t('amount')];
-    const csvData = filtered.map(trx => [
+    const headers = ['Tanggal', 'Tipe', 'Kategori', 'Deskripsi', 'Jumlah'];
+    const csvData = transactions.map(trx => [
       trx.date,
-      trx.type === 'expense' ? t('expense') : t('income'),
+      trx.type === 'expense' ? 'Pengeluaran' : 'Pemasukan',
       trx.category,
       trx.description || '-',
       trx.type === 'expense' ? `-${trx.amount}` : trx.amount
@@ -185,30 +197,22 @@ function HistoryPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    showToast(t('saveSuccess'), 'success');
+    showToast('Data berhasil diekspor', 'success');
   };
 
-  const statistics = {
-    totalIncome: transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0),
-    totalExpense: transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0),
-    totalTransactions: transactions.length
-  };
+  const totalTransactions = transactions.length;
+  const totalIncomeTransactions = transactions.filter(t => t.type === 'income').length;
+  const totalExpenseTransactions = transactions.filter(t => t.type === 'expense').length;
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
 
   const getCategoryIconColor = (category, type) => {
-    if (category === 'Transfer ke Tabungan') return 'text-emerald-600 dark:text-emerald-400';
     if (category === 'Tarik dari Tabungan') return 'text-amber-600 dark:text-amber-400';
     if (type === 'expense') return 'text-rose-600 dark:text-rose-400';
     return 'text-emerald-600 dark:text-emerald-400';
   };
 
   const getCategoryIconBg = (category, type) => {
-    if (category === 'Transfer ke Tabungan') return 'bg-emerald-50 dark:bg-emerald-900/20';
     if (category === 'Tarik dari Tabungan') return 'bg-amber-50 dark:bg-amber-900/20';
     if (type === 'expense') return 'bg-rose-50 dark:bg-rose-900/20';
     return 'bg-emerald-50 dark:bg-emerald-900/20';
@@ -219,7 +223,7 @@ function HistoryPage() {
       <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00685f] mx-auto mb-4"></div>
-          <p className={textSecondary}>{t('loading')}</p>
+          <p className={textSecondary}>Memuat...</p>
         </div>
       </div>
     );
@@ -243,6 +247,7 @@ function HistoryPage() {
         }
       `}</style>
 
+      {/* Toast Notification */}
       {toast.show && (
         <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-50 toast-slide w-auto max-w-md px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
@@ -254,33 +259,32 @@ function HistoryPage() {
         </div>
       )}
 
+      {/* Delete Confirm Dialog */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`${cardBg} rounded-2xl max-w-md w-full shadow-xl overflow-hidden`}>
             <div className={`p-5 border-b ${borderColor}`}>
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-2xl text-rose-600">warning</span>
-                <h3 className={`text-lg font-bold ${textPrimary}`}>{t('deleteConfirm') || 'Hapus Transaksi?'}</h3>
+                <h3 className={`text-lg font-bold ${textPrimary}`}>Hapus Transaksi?</h3>
               </div>
             </div>
             <div className="p-5">
-              <p className={`${textSecondary} mb-2`}>
-                {t('deleteWarning') || 'Apakah Anda yakin ingin menghapus transaksi ini?'}
-              </p>
-              <p className={`text-sm ${textSecondary}`}>{t('deleteUndone') || 'Tindakan ini tidak dapat dibatalkan.'}</p>
+              <p className={`${textSecondary} mb-2`}>Apakah Anda yakin ingin menghapus transaksi ini?</p>
+              <p className={`text-sm ${textSecondary}`}>Tindakan ini tidak dapat dibatalkan.</p>
             </div>
             <div className={`p-5 border-t ${borderColor} flex gap-3`}>
               <button
                 onClick={() => setShowDeleteConfirm(null)}
                 className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
               >
-                {t('cancel')}
+                Batal
               </button>
               <button
                 onClick={() => handleDeleteTransaction(showDeleteConfirm)}
                 className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all"
               >
-                {t('delete') || 'Hapus'}
+                Hapus
               </button>
             </div>
           </div>
@@ -291,20 +295,19 @@ function HistoryPage() {
         <Sidebar userData={userData} userAvatar={null} userInitial={userInitial} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className={`${cardBg} border-b ${borderColor} px-4 md:px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
+          {/* Header */}
+          <div className={`${cardBg} border-b ${borderColor} px-4 md:px-6 py-4 sticky top-0 z-10`}>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
               <div>
-                <h1 className={`text-xl font-bold ${textPrimary}`}>{t('activityHistory')}</h1>
-                <p className={`text-xs ${textSecondary} mt-0.5`}>
-                  {t('manageTransactions')}
-                </p>
+                <h1 className={`text-xl font-bold ${textPrimary}`}>Riwayat Aktivitas</h1>
+                <p className={`text-xs ${textSecondary} mt-0.5`}>Kelola dan lihat semua transaksi keuangan Anda</p>
               </div>
               <button
                 onClick={handleExportCSV}
-                className={`flex items-center justify-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all shadow-sm`}
+                className="flex items-center justify-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all shadow-sm"
               >
                 <span className="material-symbols-outlined text-base">download</span>
-                {t('exportCSV')}
+                Export CSV
               </button>
             </div>
           </div>
@@ -312,45 +315,50 @@ function HistoryPage() {
           <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             <div className="max-w-6xl mx-auto space-y-5">
               
-              {/* Statistik */}
+              {/* Statistik Ringkasan */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>{t('totalTransactions')}</p>
-                      <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{statistics.totalTransactions}</p>
+                      <p className={`text-xs ${textSecondary}`}>Total Transaksi</p>
+                      <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{totalTransactions}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-gray-400 dark:text-gray-500">receipt_long</span>
                   </div>
+                  <p className={`text-[10px] ${textSecondary} mt-2`}>Semua aktivitas keuangan</p>
                 </div>
+                
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>{t('totalIncome')}</p>
-                      <p className="text-base md:text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatRupiah(statistics.totalIncome)}</p>
+                      <p className={`text-xs ${textSecondary}`}>Transaksi Pemasukan</p>
+                      <p className={`text-xl md:text-2xl font-bold text-emerald-600 dark:text-emerald-400`}>{totalIncomeTransactions}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-emerald-500 dark:text-emerald-400">arrow_upward</span>
                   </div>
+                  <p className={`text-[10px] ${textSecondary} mt-2`}>Jumlah transaksi pemasukan</p>
                 </div>
+                
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>{t('totalExpense')}</p>
-                      <p className="text-base md:text-2xl font-bold text-rose-600 dark:text-rose-400">{formatRupiah(statistics.totalExpense)}</p>
+                      <p className={`text-xs ${textSecondary}`}>Transaksi Pengeluaran</p>
+                      <p className={`text-xl md:text-2xl font-bold text-rose-600 dark:text-rose-400`}>{totalExpenseTransactions}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-rose-500 dark:text-rose-400">arrow_downward</span>
                   </div>
+                  <p className={`text-[10px] ${textSecondary} mt-2`}>Jumlah transaksi pengeluaran</p>
                 </div>
               </div>
 
-              {/* Filter */}
+              {/* Filter Section */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm p-4 md:p-5`}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
                     <input
                       type="text"
-                      placeholder={t('search')}
+                      placeholder="Cari transaksi..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className={`w-full pl-9 pr-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
@@ -362,9 +370,9 @@ function HistoryPage() {
                     onChange={(e) => setTypeFilter(e.target.value)}
                     className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
                   >
-                    <option value="semua">{t('allTypes')}</option>
-                    <option value="income">{t('income')}</option>
-                    <option value="expense">{t('expense')}</option>
+                    <option value="semua">Semua Tipe</option>
+                    <option value="income">Pemasukan</option>
+                    <option value="expense">Pengeluaran</option>
                   </select>
 
                   <select
@@ -372,10 +380,10 @@ function HistoryPage() {
                     onChange={(e) => setTimeFilter(e.target.value)}
                     className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
                   >
-                    <option value="semua">{t('allTime')}</option>
-                    <option value="hariIni">{t('today')}</option>
-                    <option value="mingguIni">{t('thisWeek')}</option>
-                    <option value="bulanIni">{t('thisMonth')}</option>
+                    <option value="semua">Semua Waktu</option>
+                    <option value="hariIni">Hari Ini</option>
+                    <option value="mingguIni">Minggu Ini</option>
+                    <option value="bulanIni">Bulan Ini</option>
                   </select>
 
                   <button
@@ -385,36 +393,41 @@ function HistoryPage() {
                     <span className="material-symbols-outlined text-base">
                       {sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}
                     </span>
-                    {sortOrder === 'desc' ? t('newest') : t('oldest')}
+                    {sortOrder === 'desc' ? 'Terbaru' : 'Terlama'}
                   </button>
                 </div>
               </div>
 
-              {/* Tabel Transaksi */}
+              {/* Transactions Table */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm overflow-hidden`}>
                 <div className="hidden md:block overflow-x-auto">
                   <table className="w-full">
                     <thead className={`${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} border-b ${borderColor}`}>
                       <tr>
-                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('date')}</th>
-                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('category')}</th>
-                        <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('description')}</th>
-                        <th className={`text-right px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('amount')}</th>
-                        <th className={`text-center px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('action')}</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">No</th>
+                        <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Tanggal</th>
+                        <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Kategori</th>
+                        <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Deskripsi</th>
+                        <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Jumlah</th>
+                        <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className={`divide-y ${borderColor}`}>
                       {transactions.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="text-center py-12">
+                          <td colSpan="6" className="text-center py-12">
                             <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
-                            <p className={`text-sm ${textSecondary}`}>{t('noTransactions')}</p>
-                            <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ {t('firstTransaction')}</button>
+                            <p className="text-sm text-gray-400 dark:text-gray-500">Belum ada transaksi</p>
+                            <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ Catat transaksi pertama</button>
                           </td>
                         </tr>
                       ) : (
-                        transactions.map((transaction) => (
-                          <tr key={transaction.id} className={`${isDarkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'} transition-all`}>
+                        transactions.map((transaction, index) => (
+                          <tr 
+                            key={`${transaction.id}_${transaction.createdAt}`} 
+                            className={`${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} transition-all`}
+                          >
+                            <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{index + 1}</td>
                             <td className="px-6 py-3">
                               <div className={`text-xs font-medium ${textPrimary}`}>{formatDate(transaction.date)}</div>
                               <div className={`text-[10px] ${textSecondary}`}>{transaction.date}</div>
@@ -434,13 +447,13 @@ function HistoryPage() {
                             </td>
                             <td className={`px-6 py-3 text-right text-sm font-bold ${
                               transaction.type === 'expense' 
-                                ? (transaction.category === 'Transfer ke Tabungan' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')
+                                ? 'text-rose-600 dark:text-rose-400' 
                                 : 'text-emerald-600 dark:text-emerald-400'
                             }`}>
                               {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
                             </td>
                             <td className="px-6 py-3 text-center">
-                              <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all" title={t('delete')}>
+                              <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 transition-all" title="Hapus">
                                 <span className="material-symbols-outlined text-base">delete</span>
                               </button>
                             </td>
@@ -452,69 +465,88 @@ function HistoryPage() {
                 </div>
 
                 {/* Mobile View */}
-                <div className="block md:hidden divide-y ${borderColor}">
+                <div className="block md:hidden">
                   {transactions.length === 0 ? (
                     <div className="text-center py-12">
                       <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
-                      <p className={`text-sm ${textSecondary}`}>{t('noTransactions')}</p>
-                      <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ {t('firstTransaction')}</button>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">Belum ada transaksi</p>
+                      <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ Catat transaksi pertama</button>
                     </div>
                   ) : (
-                    transactions.map((transaction) => (
-                      <div key={transaction.id} className={`p-4 border-b ${borderColor}`}>
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-2 flex-1">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${getCategoryIconBg(transaction.category, transaction.type)}`}>
-                              <span className={`material-symbols-outlined text-base ${getCategoryIconColor(transaction.category, transaction.type)}`}>
-                                {transaction.type === 'expense' ? (transaction.category === 'Transfer ke Tabungan' ? 'savings' : 'shopping_bag') : 'payments'}
-                              </span>
+                    <div className="divide-y ${borderColor}">
+                      {transactions.map((transaction, index) => (
+                        <div key={`${transaction.id}_${transaction.createdAt}_mobile`} className={`p-4 border-b ${borderColor}`}>
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-2 flex-1">
+                              <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400">{index + 1}</span>
+                              </div>
+                              <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${getCategoryIconBg(transaction.category, transaction.type)}`}>
+                                <span className={`material-symbols-outlined text-base ${getCategoryIconColor(transaction.category, transaction.type)}`}>
+                                  {transaction.type === 'expense' ? (transaction.category === 'Transfer ke Tabungan' ? 'savings' : 'shopping_bag') : 'payments'}
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <p className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</p>
+                                <p className={`text-[10px] ${textSecondary} mt-0.5`}>{transaction.description || 'Tidak ada catatan'}</p>
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</p>
-                              <p className={`text-[10px] ${textSecondary} mt-0.5`}>{transaction.description || t('noDescription') || 'Tidak ada catatan'}</p>
+                            <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 transition-all p-1 flex-shrink-0">
+                              <span className="material-symbols-outlined text-base">delete</span>
+                            </button>
+                          </div>
+                          <div className="flex justify-between items-center pt-3 border-t border-gray-100 dark:border-gray-700">
+                            <div>
+                              <p className={`text-[10px] ${textSecondary}`}>{formatDate(transaction.date)}</p>
+                              <p className={`text-[9px] ${textSecondary} mt-0.5`}>{transaction.date}</p>
                             </div>
+                            <p className={`text-sm font-bold ${
+                              transaction.type === 'expense' 
+                                ? 'text-rose-600' 
+                                : 'text-emerald-600'
+                            }`}>
+                              {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
+                            </p>
                           </div>
-                          <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all p-1 flex-shrink-0">
-                            <span className="material-symbols-outlined text-base">delete</span>
-                          </button>
                         </div>
-                        <div className="flex justify-between items-center pt-3 border-t ${borderColor}">
-                          <div>
-                            <p className={`text-[10px] ${textSecondary}`}>{formatDate(transaction.date)}</p>
-                            <p className={`text-[9px] ${textSecondary} mt-0.5`}>{transaction.date}</p>
-                          </div>
-                          <p className={`text-sm font-bold ${
-                            transaction.type === 'expense'
-                              ? (transaction.category === 'Transfer ke Tabungan' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')
-                              : 'text-emerald-600 dark:text-emerald-400'
-                          }`}>
-                            {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
-                          </p>
-                        </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   )}
                 </div>
 
-                {hasMore && transactions.length > 0 && (
-                  <div className={`p-4 border-t ${borderColor} text-center`}>
-                    <button onClick={() => fetchTransactions(false)} disabled={loadingMore} className="px-6 py-2 text-sm font-medium text-[#00685f] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all disabled:opacity-50">
+                {/* Load More Button */}
+                {hasMore && transactions.length > 0 && transactions.length < filteredTotal && (
+                  <div className="p-4 border-t border-gray-100 dark:border-gray-700 text-center">
+                    <button
+                      onClick={() => fetchTransactions(false)}
+                      disabled={loadingMore}
+                      className={`px-6 py-2 text-sm font-medium rounded-lg transition-all disabled:opacity-50 ${
+                        isDarkMode 
+                          ? 'text-[#00685f] hover:bg-gray-800' 
+                          : 'text-[#00685f] hover:bg-gray-50'
+                      }`}
+                    >
                       {loadingMore ? (
-                        <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-2 justify-center">
                           <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
-                          {t('loading')}
+                          Memuat...
                         </span>
                       ) : (
-                        t('loadMore')
+                        'Muat Lebih Banyak'
                       )}
                     </button>
                   </div>
                 )}
               </div>
 
+              {/* Info Footer */}
               {transactions.length > 0 && (
-                <div className={`text-center text-xs ${textSecondary}`}>
-                  {t('showing') || 'Menampilkan'} {transactions.length} {t('of') || 'dari'} {totalCount} {t('transactions') || 'transaksi'}
+                <div className="text-center text-xs text-gray-400 dark:text-gray-500">
+                  Menampilkan {transactions.length} 
+                  {searchQuery ? ' hasil pencarian' : ' transaksi'}
+                  {searchQuery && totalCount !== transactions.length && (
+                    <span> dari {totalCount} total transaksi</span>
+                  )}
                 </div>
               )}
             </div>

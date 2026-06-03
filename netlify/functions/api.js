@@ -420,46 +420,72 @@ app.get('/api/transactions', async (req, res) => {
     
     // Ambil parameter filter dari query string
     const { type, startDate, endDate, limit, page } = req.query;
-    const limitNum = parseInt(limit) || 50;
+    const limitNum = parseInt(limit) || 10;
     const pageNum = parseInt(page) || 1;
     const offset = (pageNum - 1) * limitNum;
     
-    // Build query
-    let query = supabase
+    // Build query untuk count total
+    let countQuery = supabase
       .from('transactions')
-      .select('*', { count: 'exact' })
+      .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
     
-    // Filter by type (income/expense)
+    // Filter by type
     if (type && type !== 'semua') {
-      query = query.eq('type', type);
+      countQuery = countQuery.eq('type', type);
     }
     
     // Filter by date range
     if (startDate) {
-      query = query.gte('date', startDate);
+      countQuery = countQuery.gte('date', startDate);
     }
     if (endDate) {
-      query = query.lte('date', endDate);
+      countQuery = countQuery.lte('date', endDate);
     }
     
-    // Order by date descending (terbaru di atas)
-    query = query.order('date', { ascending: false });
+    const { count: totalCount, error: countError } = await countQuery;
+    
+    if (countError) {
+      console.error('Count error:', countError);
+      return res.status(500).json({ success: false, message: 'Gagal mengambil data' });
+    }
+    
+    // Build query untuk data
+    let dataQuery = supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId);
+    
+    // Filter by type
+    if (type && type !== 'semua') {
+      dataQuery = dataQuery.eq('type', type);
+    }
+    
+    // Filter by date range
+    if (startDate) {
+      dataQuery = dataQuery.gte('date', startDate);
+    }
+    if (endDate) {
+      dataQuery = dataQuery.lte('date', endDate);
+    }
+    
+    // Order by date descending
+    dataQuery = dataQuery.order('date', { ascending: false });
     
     // Pagination
-    query = query.range(offset, offset + limitNum - 1);
+    dataQuery = dataQuery.range(offset, offset + limitNum - 1);
     
-    const { data: transactions, error, count } = await query;
+    const { data: transactions, error: dataError } = await dataQuery;
     
-    if (error) {
-      console.error('Get transactions error:', error);
+    if (dataError) {
+      console.error('Get transactions error:', dataError);
       return res.status(500).json({ success: false, message: 'Gagal mengambil transaksi' });
     }
     
     res.json({ 
       success: true, 
       transactions: transactions || [],
-      count: count || 0,
+      count: totalCount || 0,
       page: pageNum,
       limit: limitNum
     });
