@@ -599,50 +599,6 @@ function TransactionPage() {
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             <div className="max-w-5xl mx-auto">
-              {!financialData.isLoading && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Aktif</p>
-                        <p className={`text-sm font-bold ${textPrimary}`}>{formatRupiah(financialData.activeBalance)}</p>
-                      </div>
-                      <span className="material-symbols-outlined text-blue-500 text-lg">wallet</span>
-                    </div>
-                  </div>
-                  
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Tabungan</p>
-                        <p className={`text-sm font-bold text-emerald-600 dark:text-emerald-400`}>{formatRupiah(financialData.savingsBalance)}</p>
-                      </div>
-                      <span className="material-symbols-outlined text-emerald-500 text-lg">savings</span>
-                    </div>
-                  </div>
-
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>Total Pemasukan</p>
-                        <p className={`text-sm font-bold ${textPrimary}`}>{formatRupiah(totalPemasukan)}</p>
-                      </div>
-                      <span className="material-symbols-outlined text-emerald-500 text-lg">arrow_upward</span>
-                    </div>
-                  </div>
-
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>Total Pengeluaran</p>
-                        <p className={`text-sm font-bold ${textPrimary}`}>{formatRupiah(financialData.totalExpense)}</p>
-                      </div>
-                      <span className="material-symbols-outlined text-rose-500 text-lg">arrow_downward</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className={`${cardBg} rounded-xl border ${borderColor} p-3 mb-6`}>
                 <div className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-blue-500 text-sm">info</span>
