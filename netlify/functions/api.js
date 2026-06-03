@@ -16,10 +16,10 @@ const AI_API_URL = process.env.AI_API_URL || 'https://financial-health-predictio
 const USE_MOCK_AI = false;
 
 // Supabase Client
-// Menggunakan service_role key untuk backend (bypass RLS)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
+
 // Helper function
 const generateToken = (userId, email) => {
   return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' });
@@ -44,7 +44,8 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'SIMU Backend Running on Netlify Functions with Supabase' });
 });
 
-// Auth Manual
+// AUTH ENDPOINTS
+// Register Manual
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -52,7 +53,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
   
   try {
-    // Cek apakah email sudah terdaftar
     const { data: existingUser, error: findError } = await supabase
       .from('users')
       .select('id')
@@ -65,7 +65,6 @@ app.post('/api/auth/register', async (req, res) => {
     
     const passwordHash = await bcrypt.hash(password, 10);
     
-    // Insert user ke database
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({
@@ -96,6 +95,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// Login Manual
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -155,7 +155,6 @@ app.post('/api/auth/google', async (req, res) => {
     const payload = ticket.getPayload();
     const { email, name, sub: googleId } = payload;
     
-    // Cari user berdasarkan email
     let { data: user, error: findError } = await supabase
       .from('users')
       .select('*')
@@ -163,7 +162,6 @@ app.post('/api/auth/google', async (req, res) => {
       .single();
     
     if (!user) {
-      // Buat user baru
       const dummyPassword = await bcrypt.hash('google-oauth-' + Date.now(), 10);
       const { data: newUser, error: insertError } = await supabase
         .from('users')
@@ -198,7 +196,9 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-// User Setup
+
+// USER SETUP ENDPOINTS
+// Get User Setup
 app.get('/api/user/setup', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -224,7 +224,8 @@ app.get('/api/user/setup', async (req, res) => {
       success: true,
       setup: {
         income: userSetup.income,
-        allocation: userSetup.allocation
+        allocation: userSetup.allocation,
+        goals: userSetup.goals || []
       }
     });
     
@@ -234,6 +235,7 @@ app.get('/api/user/setup', async (req, res) => {
   }
 });
 
+// Save User Setup
 app.put('/api/user/setup', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -250,7 +252,6 @@ app.put('/api/user/setup', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Income and allocation are required' });
     }
     
-    // Cek apakah sudah ada setup
     const { data: existingSetup } = await supabase
       .from('user_setups')
       .select('id')
@@ -259,7 +260,6 @@ app.put('/api/user/setup', async (req, res) => {
     
     let result;
     if (existingSetup) {
-      // Update existing
       result = await supabase
         .from('user_setups')
         .update({
@@ -270,7 +270,6 @@ app.put('/api/user/setup', async (req, res) => {
         })
         .eq('user_id', userId);
     } else {
-      // Insert new
       result = await supabase
         .from('user_setups')
         .insert({
@@ -288,7 +287,6 @@ app.put('/api/user/setup', async (req, res) => {
       return res.status(500).json({ success: false, message: 'Gagal menyimpan setup' });
     }
     
-    // Update monthly_income di users
     await supabase
       .from('users')
       .update({ monthly_income: income })
@@ -297,7 +295,7 @@ app.put('/api/user/setup', async (req, res) => {
     res.json({
       success: true,
       message: 'Setup berhasil disimpan',
-      setup: { income, allocation }
+      setup: { income, allocation, goals: goals || [] }
     });
     
   } catch (err) {
@@ -306,7 +304,109 @@ app.put('/api/user/setup', async (req, res) => {
   }
 });
 
-// Transactions
+// GOALS SETTING ENDPOINTS
+// Get User Goals
+app.get('/api/user/goals', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: 'No token provided' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+    
+    const { data: userSetup, error } = await supabase
+      .from('user_setups')
+      .select('goals')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      console.error('Get goals error:', error);
+      return res.status(500).json({ success: false, message: 'Database error' });
+    }
+    
+    res.json({ 
+      success: true, 
+      goals: userSetup?.goals || [] 
+    });
+    
+  } catch (err) {
+    console.error('Get goals error:', err);
+    res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+});
+
+// Save User Goals
+app.put('/api/user/goals', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: 'No token provided' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+    const { goals } = req.body;
+    
+    if (!goals || !Array.isArray(goals)) {
+      return res.status(400).json({ success: false, message: 'Goals must be an array' });
+    }
+    
+    const { data: existingSetup, error: findError } = await supabase
+      .from('user_setups')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+    
+    if (existingSetup) {
+      const { error } = await supabase
+        .from('user_setups')
+        .update({ 
+          goals: goals,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+      
+      if (error) {
+        console.error('Update goals error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to save goals' });
+      }
+    } else {
+      const { error } = await supabase
+        .from('user_setups')
+        .insert({
+          user_id: userId,
+          income: 0,
+          allocation: { kebutuhan: 50, keinginan: 30, tabungan: 20 },
+          goals: goals,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) {
+        console.error('Insert goals error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to save goals' });
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Goals saved successfully',
+      goals 
+    });
+    
+  } catch (err) {
+    console.error('Save goals error:', err);
+    res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+});
+
+// TRANSACTIONS ENDPOINTS
+// Get Transactions dengan filter & pagination
 app.get('/api/transactions', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -318,18 +418,51 @@ app.get('/api/transactions', async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const userId = decoded.userId;
     
-    const { data: transactions, error } = await supabase
+    // Ambil parameter filter dari query string
+    const { type, startDate, endDate, limit, page } = req.query;
+    const limitNum = parseInt(limit) || 50;
+    const pageNum = parseInt(page) || 1;
+    const offset = (pageNum - 1) * limitNum;
+    
+    // Build query
+    let query = supabase
       .from('transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: false });
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId);
+    
+    // Filter by type (income/expense)
+    if (type && type !== 'semua') {
+      query = query.eq('type', type);
+    }
+    
+    // Filter by date range
+    if (startDate) {
+      query = query.gte('date', startDate);
+    }
+    if (endDate) {
+      query = query.lte('date', endDate);
+    }
+    
+    // Order by date descending (terbaru di atas)
+    query = query.order('date', { ascending: false });
+    
+    // Pagination
+    query = query.range(offset, offset + limitNum - 1);
+    
+    const { data: transactions, error, count } = await query;
     
     if (error) {
       console.error('Get transactions error:', error);
       return res.status(500).json({ success: false, message: 'Gagal mengambil transaksi' });
     }
     
-    res.json({ success: true, transactions: transactions || [] });
+    res.json({ 
+      success: true, 
+      transactions: transactions || [],
+      count: count || 0,
+      page: pageNum,
+      limit: limitNum
+    });
     
   } catch (err) {
     console.error('Get transactions error:', err);
@@ -337,6 +470,7 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
+// Create Transaction
 app.post('/api/transactions', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -376,6 +510,7 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
+// Delete Transaction
 app.delete('/api/transactions/:id', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -407,7 +542,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
   }
 });
 
-// AI Endpoints
+// AI ENDPOINTS
 function mapToAIRequest(userId, monthlyIncome, userTransactions) {
   let groceries = 0, transport = 0, eating_out = 0, entertainment = 0;
   let utilities = 0, healthcare = 0, rent = 0, loan_repayment = 0;
@@ -473,7 +608,6 @@ app.get('/api/ai/health', async (req, res) => {
 app.post('/api/ai/predict', async (req, res) => {
   const { userId, monthlyIncome } = req.body;
   
-  // Ambil transaksi dari database
   const { data: userTransactions, error } = await supabase
     .from('transactions')
     .select('*')
@@ -481,7 +615,6 @@ app.post('/api/ai/predict', async (req, res) => {
   
   const cacheKey = `${userId}_${monthlyIncome}`;
   
-  // Cek cache
   if (aiCache.has(cacheKey)) {
     const cached = aiCache.get(cacheKey);
     if (Date.now() - cached.timestamp < 300000) {
@@ -571,10 +704,10 @@ app.post('/api/ai/predict', async (req, res) => {
   }
 });
 
-// Export
+// Export untuk Netlify Functions
 module.exports.handler = serverless(app);
 
-// Run Lokal
+// Run Local
 if (require.main === module) {
   const PORT = process.env.PORT || 3001;
   app.listen(PORT, () => {
@@ -588,7 +721,9 @@ if (require.main === module) {
     console.log(`   POST /api/auth/google`);
     console.log(`   GET  /api/user/setup`);
     console.log(`   PUT  /api/user/setup`);
-    console.log(`   GET  /api/transactions`);
+    console.log(`   GET  /api/user/goals`);
+    console.log(`   PUT  /api/user/goals`);
+    console.log(`   GET  /api/transactions (dengan filter & pagination)`);
     console.log(`   POST /api/transactions`);
     console.log(`   DELETE /api/transactions/:id`);
     console.log(`\n🤖 AI Mode: ${USE_MOCK_AI ? 'MOCK' : 'REAL (Railway)'}`);

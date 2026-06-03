@@ -5,6 +5,7 @@ import { useThemeStyles } from '../hooks/useThemeStyles';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
+import { GOALS_OPTIONS } from '../constants/setupData';
 
 // Daftar kategori asli
 const ORIGINAL_EXPENSE_CATEGORIES = [
@@ -28,6 +29,11 @@ const ORIGINAL_INCOME_CATEGORIES = [
   'Lainnya'
 ];
 
+const ORIGINAL_TRANSFER_CATEGORIES = [
+  'Transfer ke Tabungan',
+  'Tarik dari Tabungan'
+];
+
 function TransactionPage() {
   const navigate = useNavigate();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
@@ -36,7 +42,7 @@ function TransactionPage() {
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactionType, setTransactionType] = useState('expense');
   const [amountString, setAmountString] = useState('');
-  const [category, setCategory] = useState(ORIGINAL_EXPENSE_CATEGORIES[0]); // 'Makanan & Minuman'
+  const [category, setCategory] = useState(ORIGINAL_EXPENSE_CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [note, setNote] = useState('');
@@ -44,16 +50,22 @@ function TransactionPage() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
-  // State untuk data keuangan user
+  const [userGoals, setUserGoals] = useState([]);
+  const [selectedGoalId, setSelectedGoalId] = useState(null);
+  const [selectedWithdrawGoalId, setSelectedWithdrawGoalId] = useState(null);
+  const [savingsByGoal, setSavingsByGoal] = useState({});
+  const [isLoadingSavings, setIsLoadingSavings] = useState(false);
+  
   const [financialData, setFinancialData] = useState({
     income: 0,
     totalIncome: 0,
     totalExpense: 0,
+    activeBalance: 0,
+    savingsBalance: 0,
     remaining: 0,
     isLoading: true
   });
 
-  // Ambil data user dari localStorage
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
@@ -61,11 +73,79 @@ function TransactionPage() {
       name: storedName || 'Pengguna',
       email: storedEmail || 'email@example.com'
     });
-    
-    fetchFinancialData();
+    fetchAllData();
   }, []);
 
-  // Fetch data keuangan user
+  const fetchAllData = async () => {
+    await Promise.all([
+      fetchFinancialData(),
+      fetchUserGoals(),
+      fetchSavingsByGoal()
+    ]);
+  };
+
+  const fetchUserGoals = async () => {
+    try {
+      const response = await api.get('/user/goals');
+      const goals = response.data.goals || [];
+      const activeGoals = goals.filter(g => g.isSelected === true);
+      setUserGoals(activeGoals);
+    } catch (error) {
+      console.error('Error fetching goals:', error);
+    }
+  };
+
+  const fetchSavingsByGoal = async () => {
+    setIsLoadingSavings(true);
+    try {
+      const [goalsRes, transactionsRes] = await Promise.all([
+        api.get('/user/goals'),
+        api.get('/transactions')
+      ]);
+      
+      const userGoalsData = goalsRes.data.goals || [];
+      const transactions = transactionsRes.data.transactions || [];
+      const savings = {};
+      
+      userGoalsData.forEach(goal => {
+        if (goal.isSelected) {
+          savings[goal.id] = 0;
+        }
+      });
+      
+      transactions.forEach(tx => {
+        if (tx.category === 'Transfer ke Tabungan' || tx.category === 'Tarik dari Tabungan') {
+          const description = tx.description || '';
+          const amount = tx.amount;
+          
+          for (const goal of userGoalsData) {
+            if (goal.isSelected) {
+              const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
+              const goalLabel = goalInfo?.label || goal.id;
+              
+              if (description.includes(goalLabel)) {
+                if (tx.category === 'Transfer ke Tabungan') {
+                  savings[goal.id] = (savings[goal.id] || 0) + amount;
+                } else {
+                  savings[goal.id] = (savings[goal.id] || 0) - amount;
+                }
+                break;
+              }
+            }
+          }
+        }
+      });
+      
+      setSavingsByGoal(savings);
+      return savings;
+    } catch (error) {
+      console.error('Error fetching savings by goal:', error);
+      return {};
+    } finally {
+      setIsLoadingSavings(false);
+    }
+  };
+
   const fetchFinancialData = async () => {
     try {
       const [transactionsRes, setupRes] = await Promise.all([
@@ -77,20 +157,31 @@ function TransactionPage() {
       const setup = setupRes.data.setup;
       
       const totalIncome = transactions
-        .filter(t => t.type === 'income')
+        .filter(t => t.type === 'income' && t.category !== 'Tarik dari Tabungan')
         .reduce((sum, t) => sum + t.amount, 0);
       
       const totalExpense = transactions
-        .filter(t => t.type === 'expense')
+        .filter(t => t.type === 'expense' && t.category !== 'Transfer ke Tabungan')
         .reduce((sum, t) => sum + t.amount, 0);
       
-      const remaining = (setup.income + totalIncome) - totalExpense;
+      const savingsTransfers = transactions
+        .filter(t => t.category === 'Transfer ke Tabungan')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      const savingsWithdraws = transactions
+        .filter(t => t.category === 'Tarik dari Tabungan')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      const savingsBalance = savingsTransfers - savingsWithdraws;
+      const activeBalance = (setup.income + totalIncome + savingsWithdraws) - (totalExpense + savingsTransfers);
       
       setFinancialData({
         income: setup.income,
         totalIncome: totalIncome,
         totalExpense: totalExpense,
-        remaining: remaining,
+        activeBalance: activeBalance,
+        savingsBalance: savingsBalance,
+        remaining: activeBalance,
         isLoading: false
       });
     } catch (error) {
@@ -99,7 +190,6 @@ function TransactionPage() {
     }
   };
 
-  // Cek autentikasi dan setup
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -127,35 +217,45 @@ function TransactionPage() {
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4000);
   };
 
-  // Validasi saldo
-  const validateBalance = (amount) => {
-    if (transactionType === 'expense') {
-      const currentRemaining = financialData.remaining;
-      if (amount > currentRemaining) {
+  const validateBalance = async (amount) => {
+    if (category === 'Transfer ke Tabungan') {
+      if (amount > financialData.activeBalance) {
         return {
           valid: false,
-          message: `${t('insufficientBalance')} ${t('remaining')}: ${formatRupiah(currentRemaining)}`
+          message: `Saldo aktif tidak mencukupi! Sisa saldo aktif: ${formatRupiah(financialData.activeBalance)}`
+        };
+      }
+    } else if (category === 'Tarik dari Tabungan') {
+      if (!selectedWithdrawGoalId) {
+        return {
+          valid: false,
+          message: 'Pilih target tabungan yang akan ditarik!'
+        };
+      }
+      const goalSavings = savingsByGoal[selectedWithdrawGoalId] || 0;
+      if (amount > goalSavings) {
+        return {
+          valid: false,
+          message: `Saldo tabungan untuk target ini tidak mencukupi! Saldo saat ini: ${formatRupiah(goalSavings)}`
+        };
+      }
+    } else if (transactionType === 'expense') {
+      if (amount > financialData.activeBalance) {
+        return {
+          valid: false,
+          message: `Saldo tidak mencukupi! Sisa saldo: ${formatRupiah(financialData.activeBalance)}`
         };
       }
     }
     return { valid: true, message: '' };
   };
 
-  // Validasi jumlah
   const validateAmount = (value) => {
     const numValue = parseFloat(value);
-    if (isNaN(numValue)) return { valid: false, message: t('errorOccurred') };
-    if (numValue <= 0) return { valid: false, message: t('minTransaction') };
-    if (numValue > 10000000000) return { valid: false, message: t('maxTransaction') };
-    
-    if (transactionType === 'expense' && numValue < 1000) {
-      return { valid: false, message: t('minTransaction') };
-    }
-    
-    if (transactionType === 'income' && numValue < 1000) {
-      return { valid: false, message: t('minTransaction') };
-    }
-    
+    if (isNaN(numValue)) return { valid: false, message: 'Nominal tidak valid' };
+    if (numValue <= 0) return { valid: false, message: 'Minimal Rp 1.000' };
+    if (numValue > 10000000000) return { valid: false, message: 'Maksimal Rp 10 Miliar' };
+    if (numValue < 1000) return { valid: false, message: 'Minimal Rp 1.000' };
     return { valid: true, message: '' };
   };
 
@@ -181,71 +281,36 @@ function TransactionPage() {
     }
   };
 
-  // Get translated categories for display (berdasarkan bahasa yang dipilih)
-  const getExpenseCategories = () => {
-    return ORIGINAL_EXPENSE_CATEGORIES.map(cat => tc(cat, 'expense'));
-  };
-  
-  const getIncomeCategories = () => {
-    return ORIGINAL_INCOME_CATEGORIES.map(cat => tc(cat, 'income'));
-  };
+  const getExpenseCategories = () => ORIGINAL_EXPENSE_CATEGORIES.map(cat => tc(cat, 'expense'));
+  const getIncomeCategories = () => ORIGINAL_INCOME_CATEGORIES.map(cat => tc(cat, 'income'));
+  const getTransferCategories = () => ORIGINAL_TRANSFER_CATEGORIES;
 
-  // Helper untuk cek apakah kategori sedang aktif (menampilkan tanda select)
   const isCategoryActive = (displayCategory) => {
-    // Jika sedang showCustomInput, tidak ada kategori yang aktif (karena pakai custom)
-    if (showCustomInput) {
-      return false;
-    }
-    
-    // Untuk kategori 'Lainnya'
+    if (showCustomInput) return false;
     if (category === 'Lainnya') {
-      return displayCategory === 'Lainnya' || 
-             displayCategory === 'Others' || 
-             displayCategory === t('Other');
+      return displayCategory === 'Lainnya' || displayCategory === 'Others' || displayCategory === t('Other');
     }
-    
-    // Dapatkan index dari displayCategory yang sedang ditampilkan
-    const currentDisplayCategories = transactionType === 'expense'
-      ? getExpenseCategories()
-      : getIncomeCategories();
-    
+    const currentDisplayCategories = transactionType === 'expense' ? getExpenseCategories() : getIncomeCategories();
     const index = currentDisplayCategories.findIndex(cat => cat === displayCategory);
-    
     if (index !== -1) {
-      const originalCategories = transactionType === 'expense'
-        ? ORIGINAL_EXPENSE_CATEGORIES
-        : ORIGINAL_INCOME_CATEGORIES;
-      // Cek apakah kategori asli dari index ini sama dengan category state
+      const originalCategories = transactionType === 'expense' ? ORIGINAL_EXPENSE_CATEGORIES : ORIGINAL_INCOME_CATEGORIES;
       return originalCategories[index] === category;
     }
-    
     return false;
   };
 
-  // Handle kategori - menggunakan index untuk mapping ke kategori asli
   const handleCategorySelect = (selectedDisplayCategory) => {
-    // Cek apakah yang dipilih adalah "Lainnya" (dalam bahasa apapun)
-    const isOthers = selectedDisplayCategory === 'Lainnya' || 
-                     selectedDisplayCategory === 'Others' ||
-                     selectedDisplayCategory === t('Other');
-    
+    const isOthers = selectedDisplayCategory === 'Lainnya' || selectedDisplayCategory === 'Others' || selectedDisplayCategory === t('Other');
     if (isOthers) {
       setShowCustomInput(true);
       setCategory('Lainnya');
       setCustomCategory('');
     } else {
       setShowCustomInput(false);
-      // Cari kategori asli berdasarkan index
-      const currentDisplayCategories = transactionType === 'expense'
-        ? getExpenseCategories()
-        : getIncomeCategories();
-      
+      const currentDisplayCategories = transactionType === 'expense' ? getExpenseCategories() : getIncomeCategories();
       const index = currentDisplayCategories.findIndex(cat => cat === selectedDisplayCategory);
-      
       if (index !== -1) {
-        const originalCategories = transactionType === 'expense'
-          ? ORIGINAL_EXPENSE_CATEGORIES
-          : ORIGINAL_INCOME_CATEGORIES;
+        const originalCategories = transactionType === 'expense' ? ORIGINAL_EXPENSE_CATEGORIES : ORIGINAL_INCOME_CATEGORIES;
         setCategory(originalCategories[index]);
       } else {
         setCategory(selectedDisplayCategory);
@@ -254,21 +319,33 @@ function TransactionPage() {
     }
   };
 
-  // Validasi apakah kategori sudah dipilih
+  const handleTransferSelect = (selectedTransfer) => {
+    if (selectedTransfer === 'Transfer ke Tabungan') {
+      setCategory('Transfer ke Tabungan');
+      setSelectedWithdrawGoalId(null);
+    } else {
+      setCategory('Tarik dari Tabungan');
+      setSelectedGoalId(null);
+      fetchSavingsByGoal();
+    }
+    setShowCustomInput(false);
+    setCustomCategory('');
+  };
+
   const isCategoryValid = () => {
-    if (category === 'Lainnya' && !customCategory.trim()) {
-      return false;
-    }
-    if (!category || category === '') {
-      return false;
-    }
+    if (category === 'Lainnya' && !customCategory.trim()) return false;
+    if (!category || category === '') return false;
     return true;
   };
 
+  const getGoalLabel = (goalId) => {
+    const goalInfo = GOALS_OPTIONS.find(g => g.id === goalId);
+    return goalInfo?.label || goalId;
+  };
+
   const handleSaveTransaction = async () => {
-    // Validasi nominal
     if (!amountString || amountString === '0') {
-      showToast(t('errorOccurred'), 'error');
+      showToast('Masukkan nominal', 'error');
       return;
     }
 
@@ -280,72 +357,87 @@ function TransactionPage() {
       return;
     }
 
-    // Validasi kategori
-    if (!isCategoryValid()) {
-      showToast(t('selectCategory'), 'error');
+    if (category === 'Tarik dari Tabungan' && !selectedWithdrawGoalId) {
+      showToast('Pilih target tabungan yang akan ditarik!', 'error');
       return;
     }
 
-    if (transactionType === 'expense') {
-      const balanceValidation = validateBalance(numericAmount);
-      if (!balanceValidation.valid) {
-        showToast(balanceValidation.message, 'error');
-        return;
+    const balanceValidation = await validateBalance(numericAmount);
+    if (!balanceValidation.valid) {
+      showToast(balanceValidation.message, 'error');
+      return;
+    }
+
+    if (!isCategoryValid()) {
+      showToast('Pilih kategori', 'error');
+      return;
+    }
+
+    let finalCategory = category;
+    let finalType = transactionType;
+    let finalDescription = note.trim();
+
+    if (category === 'Transfer ke Tabungan') {
+      finalType = 'expense';
+      if (selectedGoalId) {
+        const goalLabel = getGoalLabel(selectedGoalId);
+        finalDescription = note.trim() || `Transfer ke tabungan untuk ${goalLabel}`;
+      } else {
+        finalDescription = note.trim() || 'Transfer ke tabungan';
+      }
+    } 
+    else if (category === 'Tarik dari Tabungan') {
+      finalType = 'income';
+      if (selectedWithdrawGoalId) {
+        const goalLabel = getGoalLabel(selectedWithdrawGoalId);
+        finalDescription = note.trim() || `Tarik dari tabungan untuk ${goalLabel}`;
+      } else {
+        finalDescription = note.trim() || 'Tarik dari tabungan';
       }
     }
-
-    // Validasi kategori
-    let finalCategory = category;
-    if (category === 'Lainnya' && customCategory.trim()) {
+    else if (category === 'Lainnya' && customCategory.trim()) {
       finalCategory = customCategory.trim();
-    } else if (category === 'Lainnya' && !customCategory.trim()) {
-      showToast(t('selectCategory'), 'error');
-      return;
     }
 
-    if (!finalCategory) {
-      showToast(t('selectCategory'), 'error');
-      return;
-    }
-
-    if (transactionType === 'expense' && numericAmount > 5000000) {
+    if (transactionType === 'expense' && numericAmount > 5000000 && category !== 'Transfer ke Tabungan') {
       setShowConfirmDialog(true);
       return;
     }
 
-    await saveTransaction(numericAmount, finalCategory);
+    await saveTransaction(numericAmount, finalCategory, finalType, finalDescription);
   };
 
-  const saveTransaction = async (numericAmount, finalCategory) => {
+  const saveTransaction = async (numericAmount, finalCategory, finalType, finalDescription) => {
     setLoading(true);
     try {
       const response = await api.post('/transactions', {
-        type: transactionType,
+        type: finalType,
         amount: numericAmount,
         category: finalCategory,
-        description: note.trim() || (transactionType === 'expense' ? `Belanja ${finalCategory}` : `Pendapatan ${finalCategory}`),
+        description: finalDescription,
         date: new Date().toISOString().split('T')[0]
       });
       
       if (response.data.success) {
-        showToast(t('saveSuccess'), 'success');
-        await fetchFinancialData();
+        showToast('Transaksi berhasil disimpan!', 'success');
+        await fetchAllData();
         setAmountString('');
         setNote('');
         setCustomCategory('');
         setShowCustomInput(false);
         setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]);
+        setTransactionType('expense');
+        setSelectedGoalId(null);
+        setSelectedWithdrawGoalId(null);
         setTimeout(() => navigate('/dashboard'), 1500);
       }
     } catch (error) {
       console.error('Error saving transaction:', error);
-      let message = t('errorOccurred');
-      
+      let message = 'Terjadi kesalahan';
       if (error.response?.data?.message) {
         message = error.response.data.message;
-        
         if (message.includes('Saldo tidak cukup') || message.includes('Sisa budget')) {
-          await fetchFinancialData();
+          await fetchAllData();
         } else if (message.toLowerCase().includes('setup')) {
           message = 'Anda belum melakukan pengaturan keuangan. Silakan isi pendapatan terlebih dahulu.';
           setTimeout(() => navigate('/setup-financial'), 2000);
@@ -365,22 +457,66 @@ function TransactionPage() {
   };
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
-  const previewRemaining = (() => {
-    if (!amountString || amountString === '0') return financialData.remaining;
+  
+  const previewActiveBalance = (() => {
+    if (!amountString || amountString === '0') return financialData.activeBalance;
     const amount = parseFloat(amountString);
-    if (transactionType === 'expense') return financialData.remaining - amount;
-    return financialData.remaining + amount;
+    if (category === 'Transfer ke Tabungan') return financialData.activeBalance - amount;
+    if (category === 'Tarik dari Tabungan') return financialData.activeBalance + amount;
+    if (transactionType === 'expense') return financialData.activeBalance - amount;
+    if (transactionType === 'income') return financialData.activeBalance + amount;
+    return financialData.activeBalance;
   })();
-  const isBalanceInsufficient = transactionType === 'expense' && 
-                                 amountString && 
-                                 parseFloat(amountString) > financialData.remaining;
+  
+  const previewSavingsBalance = (() => {
+    if (!amountString || amountString === '0') return financialData.savingsBalance;
+    const amount = parseFloat(amountString);
+    if (category === 'Transfer ke Tabungan') return financialData.savingsBalance + amount;
+    if (category === 'Tarik dari Tabungan') return financialData.savingsBalance - amount;
+    return financialData.savingsBalance;
+  })();
+
+  const isBalanceInsufficient = (() => {
+    if (category === 'Transfer ke Tabungan') {
+      return amountString && parseFloat(amountString) > financialData.activeBalance;
+    }
+    if (category === 'Tarik dari Tabungan') {
+      if (selectedWithdrawGoalId && amountString) {
+        const goalSavings = savingsByGoal[selectedWithdrawGoalId] || 0;
+        return parseFloat(amountString) > goalSavings;
+      }
+      return amountString && parseFloat(amountString) > financialData.savingsBalance;
+    }
+    if (transactionType === 'expense') {
+      return amountString && parseFloat(amountString) > financialData.activeBalance;
+    }
+    return false;
+  })();
 
   const expenseCategories = getExpenseCategories();
   const incomeCategories = getIncomeCategories();
-  const currentCategories = transactionType === 'expense' ? expenseCategories : incomeCategories;
-
-  // Hitung total pemasukan untuk ditampilkan di card
+  const transferCategories = getTransferCategories();
+  const isTransferMode = category === 'Transfer ke Tabungan' || category === 'Tarik dari Tabungan';
+  const isWithdrawMode = category === 'Tarik dari Tabungan';
+  const isDepositMode = category === 'Transfer ke Tabungan';
+  const currentCategories = isTransferMode ? transferCategories : (transactionType === 'expense' ? expenseCategories : incomeCategories);
   const totalPemasukan = financialData.totalIncome + financialData.income;
+
+  const getGoalIcon = (goalId) => {
+    const iconMap = { 'rumah': '🏠', 'mobil': '🚗', 'liburan': '✈️', 'gadget': '💻', 'darurat': '🛡️' };
+    return iconMap[goalId] || '🎯';
+  };
+
+  const getCurrentGoalSavings = () => {
+    if (!selectedWithdrawGoalId) return 0;
+    return savingsByGoal[selectedWithdrawGoalId] || 0;
+  };
+
+  const getActiveCategoryStyle = () => {
+    if (isTransferMode) return 'bg-emerald-600 text-white shadow-md';
+    if (transactionType === 'expense') return 'bg-rose-100 text-rose-700 border-rose-300';
+    return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+  };
 
   return (
     <div className={`min-h-screen ${bgColor}`}>
@@ -391,7 +527,6 @@ function TransactionPage() {
           vertical-align: middle;
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .toast-slide {
           animation: slideDown 0.3s ease forwards;
         }
@@ -401,7 +536,6 @@ function TransactionPage() {
         }
       `}</style>
 
-      {/* Toast Notification */}
       {toast.show && (
         <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-50 toast-slide w-auto max-w-md px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
@@ -413,34 +547,31 @@ function TransactionPage() {
         </div>
       )}
 
-      {/* Confirm Dialog */}
       {showConfirmDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="material-symbols-outlined text-3xl text-amber-600">warning</span>
-              <h3 className="text-lg font-bold text-gray-800">{t('largeConfirm')}</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className={`${cardBg} rounded-2xl max-w-md w-full shadow-xl overflow-hidden`}>
+            <div className={`p-5 border-b ${borderColor}`}>
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-2xl text-amber-600">warning</span>
+                <h3 className={`text-lg font-bold ${textPrimary}`}>Konfirmasi Transaksi Besar</h3>
+              </div>
             </div>
-            <p className="text-gray-600 mb-2">
-              {t('totalAmount')}: <strong className="text-rose-600">{formatRupiah(parseFloat(amountString))}</strong>
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              {t('remainingAfter')}: <strong className={previewRemaining < 0 ? 'text-rose-600' : 'text-[#00685f]'}>
-                {formatRupiah(previewRemaining)}
-              </strong>
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowConfirmDialog(false)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-medium hover:bg-gray-50 transition-all"
-              >
-                {t('cancel')}
+            <div className="p-5">
+              <p className={`${textSecondary} mb-2`}>
+                Total: <strong className="text-rose-600 dark:text-rose-400">{formatRupiah(parseFloat(amountString))}</strong>
+              </p>
+              <p className={`text-sm ${textSecondary}`}>
+                Sisa saldo: <strong className={previewActiveBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                  {formatRupiah(previewActiveBalance)}
+                </strong>
+              </p>
+            </div>
+            <div className={`p-5 border-t ${borderColor} flex gap-3`}>
+              <button onClick={() => setShowConfirmDialog(false)} className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
+                Batal
               </button>
-              <button
-                onClick={() => saveTransaction(parseFloat(amountString), category === 'Lainnya' && customCategory ? customCategory : category)}
-                className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all"
-              >
-                {t('confirm')}
+              <button onClick={() => saveTransaction(parseFloat(amountString), category === 'Lainnya' && customCategory ? customCategory : category, transactionType, note.trim())} className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all">
+                Konfirmasi
               </button>
             </div>
           </div>
@@ -451,285 +582,287 @@ function TransactionPage() {
         <Sidebar userData={userData} userAvatar={null} userInitial={userInitial} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className={`${cardBg} border-b ${borderColor} px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
+          <div className={`${cardBg} border-b ${borderColor} px-4 md:px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex justify-between items-center">
               <div>
-                <h1 className={`text-xl font-bold ${textPrimary}`}>{t('recordTransaction')}</h1>
+                <h1 className={`text-xl font-bold ${textPrimary}`}>Catat Transaksi</h1>
                 <p className={`text-xs ${textSecondary} mt-0.5`}>
-                  {transactionType === 'expense' ? t('recordExpense') : t('recordIncome')}
+                  {isDepositMode ? 'Transfer ke Tabungan' : isWithdrawMode ? 'Tarik dari Tabungan' : (transactionType === 'expense' ? 'Catat Pengeluaran' : 'Catat Pemasukan')}
                 </p>
               </div>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className={`flex items-center gap-2 ${borderColor} ${textSecondary} px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
-              >
+              <button onClick={() => navigate('/dashboard')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800 transition-all`}>
                 <span className="material-symbols-outlined text-sm">arrow_back</span>
-                {t('back')}
+                Kembali
               </button>
             </div>
           </div>
 
-          {/* MAIN CONTENT */}
-          <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 no-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             <div className="max-w-5xl mx-auto">
-              {/* Financial Summary & Tips */}
               {!financialData.isLoading && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                  {/* Kiri: Sisa Budget & Total Pemasukan */}
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-4 shadow-sm`}>
-                    <div className="flex justify-between items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className={`text-xs ${textSecondary} mb-1`}>{t('remaining')} {t('budgetAllocation')}</p>
-                        <p className={`text-2xl font-bold ${textPrimary}`}>{formatRupiah(financialData.remaining)}</p>
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Aktif</p>
+                        <p className={`text-sm font-bold ${textPrimary}`}>{formatRupiah(financialData.activeBalance)}</p>
                       </div>
-                      <div className="text-right">
-                        <p className={`text-xs ${textSecondary} mb-1`}>{t('totalIncome')}</p>
-                        <p className={`font-semibold ${textPrimary}`}>{formatRupiah(totalPemasukan)}</p>
+                      <span className="material-symbols-outlined text-blue-500 text-lg">wallet</span>
+                    </div>
+                  </div>
+                  
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Tabungan</p>
+                        <p className={`text-sm font-bold text-emerald-600 dark:text-emerald-400`}>{formatRupiah(financialData.savingsBalance)}</p>
                       </div>
+                      <span className="material-symbols-outlined text-emerald-500 text-lg">savings</span>
                     </div>
                   </div>
 
-                  {/* Kanan: Tips & Aturan */}
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 p-4 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-blue-500 text-base flex-shrink-0">info</span>
-                      <div className={`text-xs text-blue-700 dark:text-blue-300 flex-1`}>
-                        <p className="font-semibold mb-1.5">💡 {t('tips')}:</p>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-                          <p>• {t('minTransaction')}</p>
-                          <p>• {t('maxTransaction')}</p>
-                          <p>• {t('noExceedBudget')}</p>
-                          <p>• {t('largeConfirm')}</p>
-                          <p>• {t('otherCategory')}</p>
-                          <p>• {t('fillNote')}</p>
-                        </div>
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>Total Pemasukan</p>
+                        <p className={`text-sm font-bold ${textPrimary}`}>{formatRupiah(totalPemasukan)}</p>
                       </div>
+                      <span className="material-symbols-outlined text-emerald-500 text-lg">arrow_upward</span>
+                    </div>
+                  </div>
+
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-3 shadow-sm`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>Total Pengeluaran</p>
+                        <p className={`text-sm font-bold ${textPrimary}`}>{formatRupiah(financialData.totalExpense)}</p>
+                      </div>
+                      <span className="material-symbols-outlined text-rose-500 text-lg">arrow_downward</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Toggle Type */}
-              <div className={`${cardBg} rounded-xl border ${borderColor} p-1.5 flex gap-1.5 mb-6 max-w-md mx-auto`}>
-                <button
-                  onClick={() => {
-                    setTransactionType('expense');
-                    setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]);
-                    setAmountString('');
-                    setShowCustomInput(false);
-                    setCustomCategory('');
-                  }}
-                  className={`flex-1 py-3 rounded-lg text-sm font-semibold transition-all ${
-                    transactionType === 'expense'
-                      ? 'bg-rose-500 text-white shadow-md'
-                      : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`
-                  }`}
+              <div className={`${cardBg} rounded-xl border ${borderColor} p-3 mb-6`}>
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-blue-500 text-sm">info</span>
+                  <p className={`text-[10px] ${textSecondary}`}>
+                    Minimal transaksi Rp 1.000. Transfer ke Tabungan untuk menabung, Tarik dari Tabungan untuk mengambil uang tabungan.
+                  </p>
+                </div>
+              </div>
+
+              <div className={`${cardBg} rounded-xl border ${borderColor} p-1 flex gap-1 mb-6`}>
+                <button 
+                  onClick={() => { setTransactionType('expense'); setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]); setAmountString(''); setShowCustomInput(false); setCustomCategory(''); setSelectedGoalId(null); setSelectedWithdrawGoalId(null); }} 
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${!isTransferMode && transactionType === 'expense' ? 'bg-rose-500 text-white' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800`}`}
                 >
-                  <span className="material-symbols-outlined text-base mr-2">arrow_downward</span>
-                  {t('expense')}
+                  <span className="material-symbols-outlined text-sm mr-1">arrow_downward</span> Pengeluaran
                 </button>
-                <button
-                  onClick={() => {
-                    setTransactionType('income');
-                    setCategory(ORIGINAL_INCOME_CATEGORIES[0]);
-                    setAmountString('');
-                    setShowCustomInput(false);
-                    setCustomCategory('');
-                  }}
-                  className={`flex-1 py-3 rounded-lg text-sm font-semibold transition-all ${
-                    transactionType === 'income'
-                      ? 'bg-[#00685f] text-white shadow-md'
-                      : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`
-                  }`}
+                <button 
+                  onClick={() => { setTransactionType('income'); setCategory(ORIGINAL_INCOME_CATEGORIES[0]); setAmountString(''); setShowCustomInput(false); setCustomCategory(''); setSelectedGoalId(null); setSelectedWithdrawGoalId(null); }} 
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${!isTransferMode && transactionType === 'income' ? 'bg-emerald-600 text-white' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800`}`}
                 >
-                  <span className="material-symbols-outlined text-base mr-2">arrow_upward</span>
-                  {t('income')}
+                  <span className="material-symbols-outlined text-sm mr-1">arrow_upward</span> Pemasukan
+                </button>
+                <button 
+                  onClick={() => { setCategory('Transfer ke Tabungan'); setAmountString(''); setShowCustomInput(false); setSelectedWithdrawGoalId(null); }} 
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${isTransferMode ? 'bg-emerald-600 text-white' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800`}`}
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">sync_alt</span> Transfer
                 </button>
               </div>
 
-              {/* 2 Kolom Utama */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                {/* Kolom Kiri - Nominal Input & Number Pad */}
-                <div className="space-y-6">
-                  {/* Card Total Nominal */}
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-6 text-center shadow-sm`}>
-                    <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-2`}>
-                      {t('totalAmount')}
-                    </label>
-                    <div className={`text-3xl font-black tracking-tight ${
-                      transactionType === 'expense' ? 'text-rose-600' : 'text-[#00685f]'
+                <div className="space-y-4">
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-4 text-center`}>
+                    <p className={`text-xs ${textSecondary} mb-2`}>
+                      {isDepositMode ? 'Nominal Transfer' : isWithdrawMode ? 'Nominal Tarik' : 'Total'}
+                    </p>
+                    <p className={`text-2xl font-bold ${
+                      category === 'Transfer ke Tabungan' ? 'text-emerald-600' :
+                      category === 'Tarik dari Tabungan' ? 'text-amber-600' :
+                      transactionType === 'expense' ? 'text-rose-600' : 'text-emerald-600'
                     }`}>
                       {amountString ? formatRupiah(parseFloat(amountString)) : 'Rp 0'}
-                    </div>
+                    </p>
                     
                     {amountString && amountString !== '0' && (
-                      <div className="mt-3 text-sm">
-                        <p className={`${textSecondary}`}>{t('remainingAfter')}:</p>
-                        <p className={`font-bold ${previewRemaining < 0 ? 'text-rose-600' : 'text-[#00685f]'}`}>
-                          {formatRupiah(previewRemaining)}
+                      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>
+                          {isTransferMode ? 'Saldo Aktif setelah transaksi:' : 'Sisa Saldo Aktif:'}
+                        </p>
+                        <p className={`text-sm font-semibold ${previewActiveBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {formatRupiah(previewActiveBalance)}
+                        </p>
+                      </div>
+                    )}
+
+                    {(category === 'Transfer ke Tabungan' || category === 'Tarik dari Tabungan') && amountString && amountString !== '0' && (
+                      <div className="mt-2">
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>
+                          Saldo Tabungan setelah transaksi:
+                        </p>
+                        <p className={`text-sm font-semibold ${category === 'Transfer ke Tabungan' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {formatRupiah(previewSavingsBalance)}
+                        </p>
+                      </div>
+                    )}
+
+                    {category === 'Tarik dari Tabungan' && selectedWithdrawGoalId && amountString && amountString !== '0' && (
+                      <div className="mt-2">
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>
+                          Saldo Target setelah tarik:
+                        </p>
+                        <p className={`text-sm font-semibold ${previewSavingsBalance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
+                          {formatRupiah(savingsByGoal[selectedWithdrawGoalId] - parseFloat(amountString))}
                         </p>
                       </div>
                     )}
 
                     {isBalanceInsufficient && (
-                      <div className="mt-3 p-2 bg-rose-50 border border-rose-200 rounded-lg">
-                        <p className="text-xs text-rose-700 flex items-center justify-center gap-1">
+                      <div className="mt-3 p-2 bg-rose-50 dark:bg-rose-900/20 rounded-lg">
+                        <p className="text-[10px] text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1">
                           <span className="material-symbols-outlined text-sm">warning</span>
-                          {t('insufficientBalance')}
+                          Saldo tidak mencukupi!
                         </p>
                       </div>
                     )}
-
-                    {transactionType === 'expense' && amountString && parseFloat(amountString) > 5000000 && (
-                      <div className="mt-3 text-xs text-amber-600 bg-amber-50 inline-block px-3 py-1 rounded-full">
-                        ⚠️ {t('largeTransaction')}
+                    
+                    {category === 'Tarik dari Tabungan' && selectedWithdrawGoalId && (
+                      <div className="mt-2 text-[10px] text-amber-600">
+                        Saldo target saat ini: {formatRupiah(getCurrentGoalSavings())}
                       </div>
                     )}
                   </div>
 
-                  {/* Number Pad */}
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
-                    <div className="grid grid-cols-3 gap-3">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                        <button
-                          key={num}
-                          onClick={() => handleKeyPress(num)}
-                          className={`py-4 text-xl font-bold ${textPrimary} bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 rounded-xl transition-all`}
-                        >
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[1,2,3,4,5,6,7,8,9].map(num => (
+                        <button key={num} onClick={() => handleKeyPress(num)} className={`py-3 text-lg font-bold ${textPrimary} ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'} rounded-lg transition-all`}>
                           {num}
                         </button>
                       ))}
-                      <button
-                        onClick={() => handleKeyPress('.')}
-                        className={`py-4 text-xl font-bold ${textPrimary} bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 rounded-xl transition-all`}
-                      >
-                        .
-                      </button>
-                      <button
-                        onClick={() => handleKeyPress(0)}
-                        className={`py-4 text-xl font-bold ${textPrimary} bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 rounded-xl transition-all`}
-                      >
-                        0
-                      </button>
-                      <button
-                        onClick={() => handleKeyPress('backspace')}
-                        className="py-4 text-rose-600 bg-rose-50 hover:bg-rose-100 active:scale-95 rounded-xl transition-all flex items-center justify-center"
-                      >
-                        <span className="material-symbols-outlined">backspace</span>
+                      <button onClick={() => handleKeyPress('.')} className={`py-3 text-lg font-bold ${textPrimary} ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'} rounded-lg transition-all`}>.</button>
+                      <button onClick={() => handleKeyPress(0)} className={`py-3 text-lg font-bold ${textPrimary} ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'} rounded-lg transition-all`}>0</button>
+                      <button onClick={() => handleKeyPress('backspace')} className="py-3 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-lg transition-all flex items-center justify-center">
+                        <span className="material-symbols-outlined text-rose-600">backspace</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Tombol Simpan */}
-                  <button
-                    onClick={handleSaveTransaction}
-                    disabled={loading || !amountString || amountString === '0' || isBalanceInsufficient}
-                    className={`hidden lg:flex w-full py-4 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] items-center justify-center gap-2 ${
-                      transactionType === 'expense'
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                        : 'bg-[#00685f] hover:bg-[#005049] text-white'
-                    } ${(loading || !amountString || amountString === '0' || isBalanceInsufficient) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {loading ? (
-                      <>
-                        <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                        {t('processing')}
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined">save</span>
-                        {t('save')} {transactionType === 'expense' ? t('expense') : t('income')}
-                      </>
-                    )}
+                  <button onClick={handleSaveTransaction} disabled={loading || !amountString || amountString === '0' || isBalanceInsufficient} className={`hidden lg:flex w-full py-3 rounded-xl font-semibold transition-all items-center justify-center gap-2 ${
+                    category === 'Transfer ke Tabungan' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 
+                    category === 'Tarik dari Tabungan' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 
+                    transactionType === 'expense' ? 'bg-rose-600 hover:bg-rose-700 text-white' : 
+                    'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  } ${(loading || !amountString || amountString === '0' || isBalanceInsufficient) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    {loading ? 'Menyimpan...' : 'Simpan Transaksi'}
                   </button>
                 </div>
 
-                {/* Kolom kanan - Kategori & Catatan */}
-                <div className="space-y-6">
-                  {/* Kategori */}
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
-                    <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-4`}>
-                      {t('selectCategory')}
-                    </label>
-                    <div className="grid grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                <div className="space-y-4">
+                  {category === 'Transfer ke Tabungan' && userGoals.length > 0 && (
+                    <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
+                      <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Pilih Target Tabungan</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => setSelectedGoalId(null)} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                          selectedGoalId === null ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 
+                          `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
+                        }`}>
+                          Tanpa Target
+                        </button>
+                        {userGoals.map((goal) => {
+                          const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
+                          const goalLabel = goalInfo?.label || goal.label || goal.id;
+                          return (
+                            <button key={goal.id} onClick={() => setSelectedGoalId(goal.id)} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                              selectedGoalId === goal.id ? 'bg-emerald-600 text-white' : 
+                              `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
+                            }`}>
+                              {goalLabel}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {category === 'Tarik dari Tabungan' && userGoals.length > 0 && (
+                    <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
+                      <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Pilih Target yang Ditarik</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {userGoals.map((goal) => {
+                          const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
+                          const goalLabel = goalInfo?.label || goal.label || goal.id;
+                          return (
+                            <button key={goal.id} onClick={() => { setSelectedWithdrawGoalId(goal.id); fetchSavingsByGoal(); }} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                              selectedWithdrawGoalId === goal.id ? 'bg-amber-600 text-white' : 
+                              `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
+                            }`}>
+                              {goalLabel}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedWithdrawGoalId && (
+                        <p className="text-[10px] text-amber-600 mt-2">
+                          Saldo: {formatRupiah(getCurrentGoalSavings())}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
+                    <p className={`text-xs font-semibold ${textSecondary} mb-2`}>
+                      {isTransferMode ? 'Pilih Jenis Transfer' : 'Kategori'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                       {currentCategories.map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => handleCategorySelect(cat)}
-                          className={`py-3 px-4 rounded-lg text-sm font-medium text-center transition-all ${
-                            isCategoryActive(cat)
-                              ? transactionType === 'expense'
-                                ? 'bg-rose-50 text-rose-600 border-2 border-rose-200 shadow-sm'
-                                : 'bg-[#00685f]/10 text-[#00685f] border-2 border-[#00685f]/30 shadow-sm'
-                              : `bg-gray-50 dark:bg-gray-800 ${textSecondary} border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-200`
+                        <button 
+                          key={cat} 
+                          onClick={() => isTransferMode ? handleTransferSelect(cat) : handleCategorySelect(cat)} 
+                          className={`py-2 px-2 rounded-lg text-xs font-medium text-center transition-all ${
+                            (isTransferMode ? category === cat : isCategoryActive(cat)) 
+                              ? getActiveCategoryStyle() 
+                              : `${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'} border border-transparent`
                           }`}
                         >
                           {cat}
                         </button>
                       ))}
                     </div>
-
-                    {/* Input custom untuk kategori "Lainnya" */}
                     {showCustomInput && (
-                      <div className="mt-3">
-                        <input
-                          type="text"
-                          placeholder={t('otherCategory')}
-                          value={customCategory}
-                          onChange={(e) => {
-                            setCustomCategory(e.target.value);
-                            setCategory(e.target.value);
-                          }}
-                          className={`w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f]`}
-                        />
-                        <p className="text-[10px] text-gray-400 mt-1">
-                          {t('fillNote')}
-                        </p>
-                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Kategori lain" 
+                        value={customCategory} 
+                        onChange={(e) => { setCustomCategory(e.target.value); setCategory(e.target.value); }} 
+                        className={`w-full mt-2 px-3 py-2 text-sm ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg focus:outline-none focus:border-emerald-500`} 
+                      />
                     )}
                   </div>
 
-                  {/* Catatan */}
-                  <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
-                    <label className={`text-xs font-semibold ${textSecondary} uppercase tracking-wider block mb-2`}>
-                      {t('note')}
-                    </label>
-                    <textarea
-                      rows="3"
-                      placeholder={t('fillNote')}
-                      value={note}
-                      onChange={e => setNote(e.target.value)}
-                      maxLength={200}
-                      className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm font-medium ${textPrimary} focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f] resize-none`}
+                  <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
+                    <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Catatan</p>
+                    <textarea 
+                      rows="2" 
+                      placeholder="Tambahkan catatan..." 
+                      value={note} 
+                      onChange={e => setNote(e.target.value)} 
+                      maxLength={200} 
+                      className={`w-full px-3 py-2 text-sm ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg focus:outline-none focus:border-emerald-500 resize-none`} 
                     />
-                    <div className="text-right text-xs text-gray-400 mt-1">
-                      {note.length}/200 {t('characters') || 'karakter'}
-                    </div>
+                    <p className="text-right text-[10px] text-gray-400 mt-1">{note.length}/200</p>
                   </div>
                   
-                  {/* Tombol Simpan (mobile) */}
-                  <button
-                    onClick={handleSaveTransaction}
-                    disabled={loading || !amountString || amountString === '0' || isBalanceInsufficient}
-                    className={`lg:hidden w-full py-4 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-4 ${
-                      transactionType === 'expense'
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                        : 'bg-[#00685f] hover:bg-[#005049] text-white'
-                    } ${(loading || !amountString || amountString === '0' || isBalanceInsufficient) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {loading ? (
-                      <>
-                        <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                        {t('processing')}
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined">save</span>
-                        {t('save')} {transactionType === 'expense' ? t('expense') : t('income')}
-                      </>
-                    )}
+                  <button onClick={handleSaveTransaction} disabled={loading || !amountString || amountString === '0' || isBalanceInsufficient} className={`lg:hidden w-full py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                    category === 'Transfer ke Tabungan' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 
+                    category === 'Tarik dari Tabungan' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 
+                    transactionType === 'expense' ? 'bg-rose-600 hover:bg-rose-700 text-white' : 
+                    'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  } ${(loading || !amountString || amountString === '0' || isBalanceInsufficient) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    {loading ? 'Menyimpan...' : 'Simpan Transaksi'}
                   </button>
                 </div>
               </div>
@@ -737,6 +870,20 @@ function TransactionPage() {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: ${isDarkMode ? '#374151' : '#f1f1f1'};
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: ${isDarkMode ? '#6b7280' : '#c1c1c1'};
+          border-radius: 10px;
+        }
+      `}</style>
     </div>
   );
 }

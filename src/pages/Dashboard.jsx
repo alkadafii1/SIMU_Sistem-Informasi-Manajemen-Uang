@@ -10,6 +10,7 @@ import { getGreeting } from '../utils/dashboard/greeting';
 import { getStatusColor, getStatusIcon, getStatusText } from '../utils/dashboard/aiHelpers';
 import { NEEDS_CATEGORIES, WANTS_CATEGORIES, WEEK_DAYS } from '../constants/categories';
 import useOnlineStatus from '../hooks/dashboard/useOnlineStatus';
+import GoalsCard from '../components/Dashboard/GoalsCard';
 
 // Import components
 import Sidebar from '../components/Sidebar';
@@ -62,11 +63,36 @@ function Dashboard() {
 
   if (!setup) return null;
 
-  // Calculations
-  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const totalEffectiveIncome = setup.income + totalIncome;
-  const savingsAchieved = totalEffectiveIncome - totalExpense;
+  // Ambil selectedGoals dari setup (goals yang dipilih user)
+  const selectedGoals = setup.goals || [];
+
+  // Total pemasukan biasa (tanpa Tarik dari Tabungan)
+  const totalIncome = transactions
+    .filter(t => t.type === 'income' && t.category !== 'Tarik dari Tabungan')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  // Total pengeluaran biasa (tanpa Transfer ke Tabungan)
+  const totalExpense = transactions
+    .filter(t => t.type === 'expense' && t.category !== 'Transfer ke Tabungan')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  // Total transfer ke tabungan (uang pindah dari Saldo Aktif ke Saldo Tabungan)
+  const savingsTransfers = transactions
+    .filter(t => t.category === 'Transfer ke Tabungan')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  // Total tarik dari tabungan (uang pindah dari Saldo Tabungan ke Saldo Aktif)
+  const savingsWithdraws = transactions
+    .filter(t => t.category === 'Tarik dari Tabungan')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  // Saldo Tabungan = uang yang ditransfer ke tabungan - uang yang ditarik dari tabungan
+  const savingsBalance = savingsTransfers - savingsWithdraws;
+  
+  // Saldo Aktif = (Pendapatan Setup + Pemasukan + Uang ditarik dari tabungan) - (Pengeluaran + Uang ditransfer ke tabungan)
+  const activeBalance = (setup.income + totalIncome + savingsWithdraws) - (totalExpense + savingsTransfers);
+  
+  const savingsAchieved = activeBalance;
 
   const budgetNeeds = (setup.income * setup.allocation.kebutuhan) / 100;
   const budgetWants = (setup.income * setup.allocation.keinginan) / 100;
@@ -81,7 +107,7 @@ function Dashboard() {
 
   const needsUsedPercent = budgetNeeds > 0 ? (totalExpenseNeeds / budgetNeeds) * 100 : 0;
   const wantsUsedPercent = budgetWants > 0 ? (totalExpenseWants / budgetWants) * 100 : 0;
-  const savingsPercent = budgetSavings > 0 ? (savingsAchieved / budgetSavings) * 100 : 0;
+  const savingsPercent = budgetSavings > 0 ? (savingsBalance / budgetSavings) * 100 : 0;
 
   const translatedWeekDays = Array.isArray(t('weekDays')) ? t('weekDays') : WEEK_DAYS;
 
@@ -149,9 +175,10 @@ function Dashboard() {
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-5 pb-24 md:pb-5 space-y-5 no-scrollbar">
             <SummaryCards
-              totalIncome={totalEffectiveIncome}
+              totalIncome={totalIncome}
               totalExpense={totalExpense}
-              savingsAchieved={savingsAchieved}
+              activeBalance={activeBalance}
+              savingsBalance={savingsBalance}
               income={setup.income}
               savingsPercent={savingsPercent}
               formatRupiah={formatRupiah}
@@ -160,6 +187,7 @@ function Dashboard() {
               textPrimary={textPrimary}
               textSecondary={textSecondary}
               t={t}
+              onNavigateToGoals={() => navigate('/goals-setting')}
             />
 
             <AICard
@@ -229,6 +257,17 @@ function Dashboard() {
               />
             </div>
 
+            <GoalsCard 
+              selectedGoals={selectedGoals}
+              formatRupiah={formatRupiah}
+              cardBg={cardBg}
+              borderColor={borderColor}
+              textPrimary={textPrimary}
+              textSecondary={textSecondary}
+              t={t}
+              isDarkMode={isDarkMode}
+            />
+
             <WeeklyChart
               weeklyExpenses={weeklyExpenses}
               weekDays={translatedWeekDays}
@@ -250,6 +289,7 @@ function Dashboard() {
               textSecondary={textSecondary}
               t={t}
               tc={tc}
+              isDarkMode={isDarkMode}
             />
           </div>
         </div>

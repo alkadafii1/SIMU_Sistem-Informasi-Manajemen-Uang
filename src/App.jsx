@@ -10,6 +10,7 @@ import StatisticsPage from './pages/StatisticsPage';
 import SettingsPage from './pages/SettingsPage';
 import SetupFinancial from './pages/SetupFinancial';
 import ProfilePage from './pages/ProfilePage';
+import GoalsSetting from './pages/GoalsSetting';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/setup-financial" element={<SetupFinancial />} />
       <Route path="/profile" element={<ProfilePage />} />
+      <Route path="/goals-setting" element={<GoalsSetting />} />
     </Routes>
   );
 }

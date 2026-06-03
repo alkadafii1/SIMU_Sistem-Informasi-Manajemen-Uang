@@ -27,7 +27,6 @@ function HistoryPage() {
 
   const ITEMS_PER_PAGE = 10;
 
-  // Ambil data user dari localStorage
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
@@ -37,7 +36,6 @@ function HistoryPage() {
     });
   }, [t]);
 
-  // Cek autentikasi
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -62,7 +60,6 @@ function HistoryPage() {
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  // Fetch transactions dengan pagination dan filter
   const fetchTransactions = useCallback(async (reset = true) => {
     if (reset) {
       setLoading(true);
@@ -77,10 +74,12 @@ function HistoryPage() {
       params.append('limit', ITEMS_PER_PAGE);
       params.append('page', reset ? 1 : page);
       
+      // Filter tipe
       if (typeFilter !== 'semua') {
         params.append('type', typeFilter);
       }
       
+      // Filter waktu
       const now = new Date();
       if (timeFilter === 'hariIni') {
         params.append('startDate', now.toISOString().split('T')[0]);
@@ -142,7 +141,6 @@ function HistoryPage() {
     fetchTransactions(true);
   }, [typeFilter, timeFilter, searchQuery, sortOrder, fetchTransactions]);
 
-  // Handle delete transaction
   const handleDeleteTransaction = async (id) => {
     try {
       await api.delete(`/transactions/${id}`);
@@ -156,7 +154,6 @@ function HistoryPage() {
     }
   };
 
-  // Export ke CSV
   const handleExportCSV = () => {
     const filtered = transactions;
     if (filtered.length === 0) {
@@ -191,7 +188,6 @@ function HistoryPage() {
     showToast(t('saveSuccess'), 'success');
   };
 
-  // Hitung statistik
   const statistics = {
     totalIncome: transactions
       .filter(t => t.type === 'income')
@@ -203,6 +199,20 @@ function HistoryPage() {
   };
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
+
+  const getCategoryIconColor = (category, type) => {
+    if (category === 'Transfer ke Tabungan') return 'text-emerald-600 dark:text-emerald-400';
+    if (category === 'Tarik dari Tabungan') return 'text-amber-600 dark:text-amber-400';
+    if (type === 'expense') return 'text-rose-600 dark:text-rose-400';
+    return 'text-emerald-600 dark:text-emerald-400';
+  };
+
+  const getCategoryIconBg = (category, type) => {
+    if (category === 'Transfer ke Tabungan') return 'bg-emerald-50 dark:bg-emerald-900/20';
+    if (category === 'Tarik dari Tabungan') return 'bg-amber-50 dark:bg-amber-900/20';
+    if (type === 'expense') return 'bg-rose-50 dark:bg-rose-900/20';
+    return 'bg-emerald-50 dark:bg-emerald-900/20';
+  };
 
   if (loading && transactions.length === 0) {
     return (
@@ -233,7 +243,6 @@ function HistoryPage() {
         }
       `}</style>
 
-      {/* Toast Notification */}
       {toast.show && (
         <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-50 toast-slide w-auto max-w-md px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
@@ -245,22 +254,25 @@ function HistoryPage() {
         </div>
       )}
 
-      {/* Confirm Delete Dialog */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="material-symbols-outlined text-3xl text-rose-600">warning</span>
-              <h3 className="text-lg font-bold text-gray-800">{t('deleteConfirm') || 'Hapus Transaksi?'}</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className={`${cardBg} rounded-2xl max-w-md w-full shadow-xl overflow-hidden`}>
+            <div className={`p-5 border-b ${borderColor}`}>
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-2xl text-rose-600">warning</span>
+                <h3 className={`text-lg font-bold ${textPrimary}`}>{t('deleteConfirm') || 'Hapus Transaksi?'}</h3>
+              </div>
             </div>
-            <p className="text-gray-600 mb-2">
-              {t('deleteWarning') || 'Apakah Anda yakin ingin menghapus transaksi ini?'}
-            </p>
-            <p className="text-sm text-gray-500 mb-6">{t('deleteUndone') || 'Tindakan ini tidak dapat dibatalkan.'}</p>
-            <div className="flex gap-3">
+            <div className="p-5">
+              <p className={`${textSecondary} mb-2`}>
+                {t('deleteWarning') || 'Apakah Anda yakin ingin menghapus transaksi ini?'}
+              </p>
+              <p className={`text-sm ${textSecondary}`}>{t('deleteUndone') || 'Tindakan ini tidak dapat dibatalkan.'}</p>
+            </div>
+            <div className={`p-5 border-t ${borderColor} flex gap-3`}>
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-medium hover:bg-gray-50 transition-all"
+                className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
               >
                 {t('cancel')}
               </button>
@@ -279,7 +291,6 @@ function HistoryPage() {
         <Sidebar userData={userData} userAvatar={null} userInitial={userInitial} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
           <div className={`${cardBg} border-b ${borderColor} px-4 md:px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
               <div>
@@ -298,11 +309,10 @@ function HistoryPage() {
             </div>
           </div>
 
-          {/* Main Content - Tambahan padding bottom untuk mobile */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 no-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             <div className="max-w-6xl mx-auto space-y-5">
               
-              {/* Statistik Ringkasan - konsisten dengan Dashboard */}
+              {/* Statistik */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
@@ -310,33 +320,32 @@ function HistoryPage() {
                       <p className={`text-xs ${textSecondary}`}>{t('totalTransactions')}</p>
                       <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{statistics.totalTransactions}</p>
                     </div>
-                    <span className="material-symbols-outlined text-2xl md:text-3xl text-gray-400">receipt_long</span>
+                    <span className="material-symbols-outlined text-2xl md:text-3xl text-gray-400 dark:text-gray-500">receipt_long</span>
                   </div>
                 </div>
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-xs ${textSecondary}`}>{t('totalIncome')}</p>
-                      <p className="text-base md:text-2xl font-bold text-emerald-600">{formatRupiah(statistics.totalIncome)}</p>
+                      <p className="text-base md:text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatRupiah(statistics.totalIncome)}</p>
                     </div>
-                    <span className="material-symbols-outlined text-2xl md:text-3xl text-emerald-500">arrow_upward</span>
+                    <span className="material-symbols-outlined text-2xl md:text-3xl text-emerald-500 dark:text-emerald-400">arrow_upward</span>
                   </div>
                 </div>
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-xs ${textSecondary}`}>{t('totalExpense')}</p>
-                      <p className="text-base md:text-2xl font-bold text-rose-600">{formatRupiah(statistics.totalExpense)}</p>
+                      <p className="text-base md:text-2xl font-bold text-rose-600 dark:text-rose-400">{formatRupiah(statistics.totalExpense)}</p>
                     </div>
-                    <span className="material-symbols-outlined text-2xl md:text-3xl text-rose-500">arrow_downward</span>
+                    <span className="material-symbols-outlined text-2xl md:text-3xl text-rose-500 dark:text-rose-400">arrow_downward</span>
                   </div>
                 </div>
               </div>
 
-              {/* Filter Section - Responsive grid */}
+              {/* Filter */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm p-4 md:p-5`}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                  {/* Search */}
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
                     <input
@@ -344,26 +353,24 @@ function HistoryPage() {
                       placeholder={t('search')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
+                      className={`w-full pl-9 pr-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
                     />
                   </div>
 
-                  {/* Filter Tipe */}
                   <select
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value)}
-                    className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
+                    className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
                   >
                     <option value="semua">{t('allTypes')}</option>
                     <option value="income">{t('income')}</option>
                     <option value="expense">{t('expense')}</option>
                   </select>
 
-                  {/* Filter Waktu */}
                   <select
                     value={timeFilter}
                     onChange={(e) => setTimeFilter(e.target.value)}
-                    className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f]`}
+                    className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
                   >
                     <option value="semua">{t('allTime')}</option>
                     <option value="hariIni">{t('today')}</option>
@@ -371,10 +378,9 @@ function HistoryPage() {
                     <option value="bulanIni">{t('thisMonth')}</option>
                   </select>
 
-                  {/* Sort Order */}
                   <button
                     onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
+                    className={`flex items-center justify-center gap-2 px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'} border ${borderColor} rounded-lg text-sm transition-all`}
                   >
                     <span className="material-symbols-outlined text-base">
                       {sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}
@@ -384,12 +390,11 @@ function HistoryPage() {
                 </div>
               </div>
 
-              {/* Transactions List - Mobile friendly */}
+              {/* Tabel Transaksi */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm overflow-hidden`}>
-                {/* Desktop Table View - hidden on mobile */}
                 <div className="hidden md:block overflow-x-auto">
                   <table className="w-full">
-                    <thead className={`bg-gray-50 dark:bg-gray-800 border-b ${borderColor}`}>
+                    <thead className={`${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} border-b ${borderColor}`}>
                       <tr>
                         <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('date')}</th>
                         <th className={`text-left px-6 py-3 text-xs font-semibold ${textSecondary}`}>{t('category')}</th>
@@ -402,51 +407,40 @@ function HistoryPage() {
                       {transactions.length === 0 ? (
                         <tr>
                           <td colSpan="5" className="text-center py-12">
-                            <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
+                            <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
                             <p className={`text-sm ${textSecondary}`}>{t('noTransactions')}</p>
-                            <button
-                              onClick={() => navigate('/transaction')}
-                              className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
-                            >
-                              + {t('firstTransaction')}
-                            </button>
+                            <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ {t('firstTransaction')}</button>
                           </td>
                         </tr>
                       ) : (
                         transactions.map((transaction) => (
-                          <tr key={transaction.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-all`}>
+                          <tr key={transaction.id} className={`${isDarkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'} transition-all`}>
                             <td className="px-6 py-3">
                               <div className={`text-xs font-medium ${textPrimary}`}>{formatDate(transaction.date)}</div>
                               <div className={`text-[10px] ${textSecondary}`}>{transaction.date}</div>
                             </td>
                             <td className="px-6 py-3">
                               <div className="flex items-center gap-2">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                                  transaction.type === 'expense' ? 'bg-rose-100 dark:bg-rose-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'
-                                }`}>
-                                  <span className="material-symbols-outlined text-xs">
-                                    {transaction.type === 'expense' ? 'shopping_bag' : 'payments'}
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${getCategoryIconBg(transaction.category, transaction.type)}`}>
+                                  <span className={`material-symbols-outlined text-sm ${getCategoryIconColor(transaction.category, transaction.type)}`}>
+                                    {transaction.type === 'expense' ? (transaction.category === 'Transfer ke Tabungan' ? 'savings' : 'shopping_bag') : 'payments'}
                                   </span>
                                 </div>
                                 <span className={`text-xs font-medium ${textPrimary}`}>{transaction.category}</span>
                               </div>
                             </td>
                             <td className="px-6 py-3">
-                              <span className={`text-xs ${textSecondary}`}>
-                                {transaction.description || '-'}
-                              </span>
+                              <span className={`text-xs ${textSecondary}`}>{transaction.description || '-'}</span>
                             </td>
                             <td className={`px-6 py-3 text-right text-sm font-bold ${
-                              transaction.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'
+                              transaction.type === 'expense' 
+                                ? (transaction.category === 'Transfer ke Tabungan' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')
+                                : 'text-emerald-600 dark:text-emerald-400'
                             }`}>
                               {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
                             </td>
                             <td className="px-6 py-3 text-center">
-                              <button
-                                onClick={() => setShowDeleteConfirm(transaction.id)}
-                                className="text-gray-400 hover:text-rose-600 transition-all"
-                                title={t('delete')}
-                              >
+                              <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all" title={t('delete')}>
                                 <span className="material-symbols-outlined text-base">delete</span>
                               </button>
                             </td>
@@ -457,52 +451,42 @@ function HistoryPage() {
                   </table>
                 </div>
 
-                {/* Mobile Card View - shown on mobile */}
+                {/* Mobile View */}
                 <div className="block md:hidden divide-y ${borderColor}">
                   {transactions.length === 0 ? (
                     <div className="text-center py-12">
-                      <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">inbox</span>
+                      <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
                       <p className={`text-sm ${textSecondary}`}>{t('noTransactions')}</p>
-                      <button
-                        onClick={() => navigate('/transaction')}
-                        className="mt-3 text-xs text-[#00685f] font-medium hover:underline"
-                      >
-                        + {t('firstTransaction')}
-                      </button>
+                      <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ {t('firstTransaction')}</button>
                     </div>
                   ) : (
                     transactions.map((transaction) => (
                       <div key={transaction.id} className={`p-4 border-b ${borderColor}`}>
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                                transaction.type === 'expense' ? 'bg-rose-100 dark:bg-rose-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'
-                              }`}>
-                                <span className="material-symbols-outlined text-sm">
-                                  {transaction.type === 'expense' ? 'shopping_bag' : 'payments'}
-                                </span>
-                              </div>
-                              <span className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</span>
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-2 flex-1">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${getCategoryIconBg(transaction.category, transaction.type)}`}>
+                              <span className={`material-symbols-outlined text-base ${getCategoryIconColor(transaction.category, transaction.type)}`}>
+                                {transaction.type === 'expense' ? (transaction.category === 'Transfer ke Tabungan' ? 'savings' : 'shopping_bag') : 'payments'}
+                              </span>
                             </div>
-                            <p className={`text-xs ${textSecondary} mt-1`}>
-                              {transaction.description || t('noDescription') || 'Tidak ada catatan'}
-                            </p>
+                            <div className="flex-1">
+                              <p className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</p>
+                              <p className={`text-[10px] ${textSecondary} mt-0.5`}>{transaction.description || t('noDescription') || 'Tidak ada catatan'}</p>
+                            </div>
                           </div>
-                          <button
-                            onClick={() => setShowDeleteConfirm(transaction.id)}
-                            className="text-gray-400 hover:text-rose-600 transition-all p-1"
-                          >
+                          <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all p-1 flex-shrink-0">
                             <span className="material-symbols-outlined text-base">delete</span>
                           </button>
                         </div>
-                        <div className="flex justify-between items-center mt-2 pt-2 border-t ${borderColor}">
+                        <div className="flex justify-between items-center pt-3 border-t ${borderColor}">
                           <div>
                             <p className={`text-[10px] ${textSecondary}`}>{formatDate(transaction.date)}</p>
-                            <p className={`text-[10px] ${textSecondary}`}>{transaction.date}</p>
+                            <p className={`text-[9px] ${textSecondary} mt-0.5`}>{transaction.date}</p>
                           </div>
-                          <p className={`text-base font-bold ${
-                            transaction.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'
+                          <p className={`text-sm font-bold ${
+                            transaction.type === 'expense'
+                              ? (transaction.category === 'Transfer ke Tabungan' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')
+                              : 'text-emerald-600 dark:text-emerald-400'
                           }`}>
                             {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
                           </p>
@@ -512,14 +496,9 @@ function HistoryPage() {
                   )}
                 </div>
 
-                {/* Load More Button */}
                 {hasMore && transactions.length > 0 && (
                   <div className={`p-4 border-t ${borderColor} text-center`}>
-                    <button
-                      onClick={() => fetchTransactions(false)}
-                      disabled={loadingMore}
-                      className="px-6 py-2 text-sm font-medium text-[#00685f] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all disabled:opacity-50"
-                    >
+                    <button onClick={() => fetchTransactions(false)} disabled={loadingMore} className="px-6 py-2 text-sm font-medium text-[#00685f] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all disabled:opacity-50">
                       {loadingMore ? (
                         <span className="flex items-center gap-2">
                           <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
@@ -533,7 +512,6 @@ function HistoryPage() {
                 )}
               </div>
 
-              {/* Info Footer */}
               {transactions.length > 0 && (
                 <div className={`text-center text-xs ${textSecondary}`}>
                   {t('showing') || 'Menampilkan'} {transactions.length} {t('of') || 'dari'} {totalCount} {t('transactions') || 'transaksi'}
