@@ -16,7 +16,6 @@ function GoalsSetting() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // User data
   const userData = {
     name: localStorage.getItem('user_name') || 'Pengguna',
     email: localStorage.getItem('user_email') || 'email@example.com',
@@ -24,13 +23,11 @@ function GoalsSetting() {
   const userAvatar = localStorage.getItem('user_avatar');
   const userInitial = userData.name.charAt(0).toUpperCase();
 
-  // Load user's goals data
   useEffect(() => {
     const fetchGoals = async () => {
       try {
         const response = await api.get('/user/goals');
         const userGoals = response.data.goals || [];
-        
         const initializedGoals = GOALS_OPTIONS.map(goal => {
           const savedGoal = userGoals.find(g => g.id === goal.id);
           return {
@@ -39,11 +36,9 @@ function GoalsSetting() {
             isSelected: savedGoal?.isSelected || false
           };
         });
-        
         setGoals(initializedGoals);
       } catch (error) {
         console.error('Error fetching goals:', error);
-        // Jika error (termasuk 404), gunakan default
         const defaultGoals = GOALS_OPTIONS.map(goal => ({
           ...goal,
           target: goal.defaultTarget,
@@ -54,7 +49,6 @@ function GoalsSetting() {
         setLoading(false);
       }
     };
-    
     fetchGoals();
   }, []);
 
@@ -96,7 +90,6 @@ function GoalsSetting() {
         target: goal.target,
         isSelected: goal.isSelected
       }));
-      
       await api.put('/user/goals', { goals: goalsToSave });
       showToast('Target tabungan berhasil disimpan!', 'success');
       setTimeout(() => navigate('/dashboard'), 1500);
@@ -133,7 +126,6 @@ function GoalsSetting() {
         }
       `}</style>
 
-      {/* Toast Notification */}
       {toast.show && (
         <div className={`fixed top-5 left-1/2 -translate-x-1/2 z-50 toast-slide w-auto max-w-md px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
@@ -149,67 +141,57 @@ function GoalsSetting() {
         <Sidebar userData={userData} userAvatar={userAvatar} userInitial={userInitial} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
           <div className={`${cardBg} border-b ${borderColor} px-6 py-4 sticky top-0 z-10 flex-shrink-0`}>
             <div className="flex justify-between items-center">
               <div>
                 <h1 className={`text-xl font-bold ${textPrimary}`}>Atur Target Tabungan</h1>
-                <p className={`text-xs ${textSecondary} mt-0.5`}>
-                  Tentukan target nominal untuk setiap impianmu
-                </p>
+                <p className={`text-xs ${textSecondary} mt-0.5`}>Tentukan target nominal untuk setiap impianmu</p>
               </div>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className={`flex items-center gap-2 ${borderColor} ${textSecondary} px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
-              >
-                <span className="material-symbols-outlined text-sm">arrow_back</span>
-                Kembali
-              </button>
             </div>
           </div>
 
-          {/* Content */}
           <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
             <div className="max-w-3xl mx-auto space-y-6">
-              
+
               {/* Info Card */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-blue-500">info</span>
-                  <div className="text-sm text-blue-700 dark:text-blue-300">
-                    <p className="font-semibold mb-1">💡 Cara Menabung untuk Target:</p>
-                    <p className="text-xs">Buka halaman <strong>Catat Transaksi</strong> → Pilih <strong>Transfer</strong> → Pilih <strong>Transfer ke Tabungan</strong> → Masukkan nominal → Simpan. Progress akan otomatis terhitung!</p>
-                  </div>
+              <div className={`rounded-xl border p-4 flex items-start gap-3 ${
+                isDarkMode
+                  ? 'bg-blue-950 border-blue-800 text-blue-200'
+                  : 'bg-blue-50 border-blue-200 text-blue-900'
+              }`}>
+                <span className={`material-symbols-outlined text-xl mt-0.5 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`}>info</span>
+                <div>
+                  <p className="font-semibold text-sm mb-1">💡 Cara Menabung untuk Target:</p>
+                  <p className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                    Buka halaman <strong>Catat Transaksi</strong> → Pilih <strong>Transfer</strong> → Pilih <strong>Transfer ke Tabungan</strong> → Masukkan nominal → Simpan. Progress akan otomatis terhitung!
+                  </p>
                 </div>
               </div>
 
-              {/* Goals List */}
               <div className="space-y-4">
                 <h2 className={`text-lg font-bold ${textPrimary}`}>Pilih Target & Tentukan Nominal</h2>
-                
+
                 {goals.map((goal) => (
                   <div
                     key={goal.id}
                     className={`${cardBg} rounded-xl border ${borderColor} p-5 transition-all ${
-                      goal.isSelected ? 'ring-2 ring-[#00685f]' : ''
+                      goal.isSelected ? `ring-2 ring-[#00685f] ${isDarkMode ? 'ring-offset-gray-800' : 'ring-offset-white'}` : ''
                     }`}
                   >
                     <div className="flex items-start gap-4">
-                      {/* Checkbox */}
                       <button
                         onClick={() => handleToggleGoal(goal.id)}
                         className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 mt-1 transition-all ${
                           goal.isSelected
                             ? 'bg-[#00685f] border-[#00685f] text-white'
-                            : 'border-gray-300 hover:border-[#00685f]'
+                            : `border-gray-300 dark:border-gray-600 hover:border-[#00685f] ${textSecondary}`
                         }`}
                       >
                         {goal.isSelected && (
                           <span className="material-symbols-outlined text-sm">check</span>
                         )}
                       </button>
-                      
-                      {/* Icon & Label */}
+
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-3">
                           <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${goal.color}20` }}>
@@ -222,26 +204,25 @@ function GoalsSetting() {
                             </p>
                           </div>
                         </div>
-                        
-                        {/* Input Target (hanya tampil jika dipilih) */}
+
                         {goal.isSelected && (
-                          <div className="ml-0 md:ml-15">
-                            <label className={`text-xs font-medium ${textSecondary} block mb-2`}>
-                              Target Nominal
-                            </label>
+                          <div>
+                            <label className={`text-xs font-medium ${textSecondary} block mb-2`}>Target Nominal</label>
                             <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">Rp</span>
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">Rp</span>
                               <input
                                 type="text"
                                 value={formatRupiah(goal.target)}
                                 onChange={(e) => handleTargetChange(goal.id, e.target.value)}
-                                className={`w-full pl-8 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border ${borderColor} rounded-lg text-sm ${textPrimary} focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f]`}
+                                className={`w-full pl-8 pr-4 py-2.5 rounded-lg text-sm border focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f] transition-all ${
+                                  isDarkMode
+                                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                                }`}
                                 placeholder="Masukkan target nominal"
                               />
                             </div>
-                            <p className={`text-[10px] ${textSecondary} mt-1`}>
-                              Contoh: Rp 500.000.000 untuk rumah impian
-                            </p>
+                            <p className={`text-[10px] ${textSecondary} mt-1`}>Contoh: Rp 500.000.000 untuk rumah impian</p>
                           </div>
                         )}
                       </div>
@@ -250,12 +231,11 @@ function GoalsSetting() {
                 ))}
               </div>
 
-              {/* Save Button */}
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-1 py-3 bg-[#00685f] hover:bg-[#005049] text-white font-semibold rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="flex-1 py-3 bg-[#00685f] hover:bg-[#005049] text-white font-semibold rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? (
                     <div className="flex items-center justify-center gap-2">
@@ -268,7 +248,11 @@ function GoalsSetting() {
                 </button>
                 <button
                   onClick={() => navigate('/dashboard')}
-                  className="px-6 py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-all"
+                  className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
                 >
                   Batal
                 </button>

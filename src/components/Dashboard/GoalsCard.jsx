@@ -40,7 +40,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
       let totalAllocatedToGoals = 0;
       let totalWithdrawFromGeneral = 0;
       
-      // Hitung saldo per goal dari transaksi alokasi
       const savingsByGoal = {};
       
       userGoals.forEach(goal => {
@@ -54,12 +53,9 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           const description = tx.description || '';
           const amount = tx.amount;
           
-          // Cek apakah ini alokasi ke target atau topup ke tabungan umum
           if (description.includes('Alokasi dari Tabungan Umum ke')) {
-            // Ini adalah ALOKASI ke target tertentu
             totalAllocatedToGoals += amount;
             
-            // Cari target yang dimaksud
             for (const goal of userGoals) {
               if (goal.isSelected) {
                 const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
@@ -71,17 +67,13 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
               }
             }
           } else {
-            // Ini adalah TOPUP ke tabungan umum (dari saldo aktif)
             totalTopUpToGeneral += amount;
           }
         } else if (tx.category === 'Tarik dari Tabungan') {
-          const amount = tx.amount;
-          totalWithdrawFromGeneral += amount;
+          totalWithdrawFromGeneral += tx.amount;
         }
       });
       
-      // Hitung total saldo tabungan umum yang tersedia
-      // Saldo = Total Topup - (Total Alokasi + Total Withdraw)
       const totalGeneralSavings = totalTopUpToGeneral - (totalAllocatedToGoals + totalWithdrawFromGeneral);
       const unallocated = Math.max(0, totalGeneralSavings);
       
@@ -121,26 +113,18 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     fetchData();
   }, []);
 
-  // Fungsi untuk memformat angka saat diketik
   const handleAmountChange = (e) => {
     let value = e.target.value;
-    
-    // Hapus semua karakter non-digit
     let numericValue = value.replace(/[^0-9]/g, '');
-    
-    // Konversi ke number
     let numberValue = numericValue === '' ? 0 : parseInt(numericValue, 10);
     
-    // Batasi maksimal 10 Miliar (10,000,000,000)
     if (numberValue > 10000000000) {
       numberValue = 10000000000;
       numericValue = numberValue.toString();
     }
     
-    // Simpan nilai numerik asli
     setAllocationAmount(numericValue);
     
-    // Tampilkan dalam format Rupiah jika ada nilai
     if (numericValue && numericValue !== '0') {
       setDisplayAmount(formatRupiah(parseInt(numericValue, 10)));
     } else {
@@ -148,12 +132,10 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     }
   };
 
-  // Fungsi untuk fokus pada input - pilih semua teks
   const handleFocus = (e) => {
     e.target.select();
   };
 
-  // Validasi input alokasi
   const validateAllocationAmount = (amount, maxAmount) => {
     const numAmount = parseInt(amount, 10);
     if (isNaN(numAmount) || numAmount <= 0) {
@@ -171,7 +153,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     return { valid: true, message: '' };
   };
 
-  // Fungsi untuk alokasi tabungan umum ke target
   const handleAllocateToGoal = async () => {
     if (!selectedAllocationGoal) {
       showToast('Pilih target terlebih dahulu!', 'error');
@@ -190,7 +171,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
       const selectedGoal = GOALS_OPTIONS.find(g => g.id === selectedAllocationGoal);
       const goalLabel = selectedGoal?.label || selectedAllocationGoal;
       
-      // Buat transaksi alokasi
       const response = await api.post('/transactions', {
         type: 'expense',
         amount: amount,
@@ -205,7 +185,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
         setAllocationAmount('');
         setDisplayAmount('');
         setSelectedAllocationGoal(null);
-        // Refresh data setelah transaksi berhasil
         setTimeout(() => fetchData(), 500);
       } else {
         showToast('Gagal mengalokasikan dana', 'error');
@@ -218,7 +197,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     }
   };
   
-  // Fungsi untuk menarik tabungan umum ke saldo aktif
   const handleWithdrawFromGeneral = async () => {
     const amount = parseInt(allocationAmount, 10);
     const validation = validateAllocationAmount(amount, unallocatedSavings);
@@ -254,7 +232,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     }
   };
 
-  // Reset modal saat ditutup
   const handleCloseModal = () => {
     setShowAllocationModal(false);
     setAllocationAmount('');
@@ -268,53 +245,38 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     return iconMap[goalId] || '🎯';
   };
 
-  // Tentukan background card berdasarkan mode
   const getCardBg = () => {
-    if (isDarkMode) {
-      return 'bg-gray-800';
-    }
+    if (isDarkMode) return 'bg-gray-800';
     return 'bg-white';
   };
 
   const getBorderColor = () => {
-    if (isDarkMode) {
-      return 'border-gray-700';
-    }
+    if (isDarkMode) return 'border-gray-700';
     return 'border-gray-200';
   };
 
   const getTextPrimary = () => {
-    if (isDarkMode) {
-      return 'text-white';
-    }
+    if (isDarkMode) return 'text-white';
     return 'text-gray-900';
   };
 
   const getTextSecondary = () => {
-    if (isDarkMode) {
-      return 'text-gray-400';
-    }
+    if (isDarkMode) return 'text-gray-400';
     return 'text-gray-500';
   };
 
   const getGoalItemBg = () => {
-    if (isDarkMode) {
-      return 'bg-gray-700';
-    }
+    if (isDarkMode) return 'bg-gray-700';
     return 'bg-gray-50';
   };
 
   const getProgressTrackBg = () => {
-    if (isDarkMode) {
-      return 'bg-gray-600';
-    }
+    if (isDarkMode) return 'bg-gray-600';
     return 'bg-gray-200';
   };
 
   const getGeneralSavingsBg = () => {
-    if (isDarkMode) {
-      return 'bg-amber-900/20 border border-amber-800';
-    }
+    if (isDarkMode) return 'bg-amber-900/20 border border-amber-800';
     return 'bg-amber-50 border border-amber-200';
   };
 
@@ -335,12 +297,33 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     return (
       <div className={`${getCardBg()} rounded-lg border ${getBorderColor()} shadow-sm p-4`}>
         <div className="flex items-center gap-2 mb-3">
+          <span className="material-symbols-outlined text-emerald-600">savings</span>
           <h3 className={`text-sm font-bold ${getTextPrimary()}`}>{t('goals')}</h3>
         </div>
         <div className="text-center py-4">
           <span className="material-symbols-outlined text-3xl text-gray-300 dark:text-gray-600 mb-2">add_circle</span>
           <p className={`text-xs ${getTextSecondary()} mb-2`}>{t('noTransactions')}</p>
-          <button onClick={() => navigate('/goals-setting')} className="text-xs font-medium text-[#00685f] hover:underline">+ {t('addGoal')}</button>
+          <button onClick={() => navigate('/goals-setting')} className="mt-2 px-4 py-2 text-sm font-medium bg-[#00685f] text-white rounded-lg hover:bg-[#005049] transition-all">
+            + {t('addGoal')}
+          </button>
+        </div>
+        
+        {/* Button Atur & Transfer berjajar di bawah */}
+        <div className="flex gap-3 mt-4">
+          <button 
+            onClick={() => navigate('/goals-setting')} 
+            className="flex-1 py-2 text-center text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-1"
+          >
+            <span className="material-symbols-outlined text-sm">settings</span>
+            {t('manageGoals')}
+          </button>
+          <button 
+            onClick={() => navigate('/transaction')} 
+            className="flex-1 py-2 text-center text-xs font-semibold bg-[#00685f] hover:bg-[#005049] text-white rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm"
+          >
+            <span className="material-symbols-outlined text-sm">savings</span>
+            {t('transferToSavings')}
+          </button>
         </div>
       </div>
     );
@@ -491,11 +474,9 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
 
       {/* MAIN CARD */}
       <div className={`${getCardBg()} rounded-lg border ${getBorderColor()} shadow-sm p-4`}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <h3 className={`text-sm font-bold ${getTextPrimary()}`}>{t('goals')}</h3>
-          </div>
-          <button onClick={() => navigate('/goals-setting')} className="text-xs font-medium text-[#00685f] hover:underline">{t('manageGoals')}</button>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="material-symbols-outlined text-emerald-600">savings</span>
+          <h3 className={`text-sm font-bold ${getTextPrimary()}`}>{t('goals')}</h3>
         </div>
         
         <div className="space-y-3">
@@ -567,7 +548,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                     setDisplayAmount('');
                     setShowAllocationModal(true);
                   }}
-                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center justify-center gap-1"
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center justify-center gap-1 shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">assignment</span>
                   {t('allocateToGoal')}
@@ -579,7 +560,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                     setDisplayAmount('');
                     setShowAllocationModal(true);
                   }}
-                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-all flex items-center justify-center gap-1"
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-all flex items-center justify-center gap-1 shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">arrow_upward</span>
                   {t('withdrawToActive')}
@@ -589,9 +570,23 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           )}
         </div>
         
-        <button onClick={() => navigate('/transaction')} className="w-full mt-3 py-2 text-center text-xs font-medium text-[#00685f] hover:underline">
-          + {t('transferToSavings')}
-        </button>
+        {/* BUTTON BERJajar di Bawah */}
+        <div className="flex gap-3 mt-4">
+          <button 
+            onClick={() => navigate('/goals-setting')} 
+            className="flex-1 py-2 text-center text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-1"
+          >
+            <span className="material-symbols-outlined text-sm">settings</span>
+            {t('manageGoals')}
+          </button>
+          <button 
+            onClick={() => navigate('/transaction')} 
+            className="flex-1 py-2 text-center text-xs font-semibold bg-[#00685f] hover:bg-[#005049] text-white rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm"
+          >
+            <span className="material-symbols-outlined text-sm">savings</span>
+            {t('transferToSavings')}
+          </button>
+        </div>
       </div>
     </>
   );
