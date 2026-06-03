@@ -133,14 +133,14 @@ SIMU_Sistem-Informasi-Manajemen-Uang/
 
 **Coding Camp 2026 powered by DBS Foundation** — ID Tim: `CC26-PSU171`
 
-| Nama | Learning Path | Peran |
-|---|---|---|
-| Meilani Bulandari Hasibuan | Data Scientist | Analisis data & visualisasi |
-| Yelly Ambarwaty | Data Scientist | Data wrangling & EDA |
-| Anisa Nabila | AI Engineer | Model Deep Learning & API AI |
-| Izzatul Aliya Nisa | AI Engineer | Clustering & Gemini integration |
-| Celvin Alfiansyah | Full-Stack Web Developer | Frontend & Backend |
-| Alkadafi Firnawan | Full-Stack Web Developer | Frontend & Backend |
+| Nama | Learning Path |
+|---|---|
+| Meilani Bulandari Hasibuan | Data Scientist |
+| Yelly Ambarwaty | Data Scientist |
+| Anisa Nabila | AI Engineer |
+| Izzatul Aliya Nisa | AI Engineer |
+| Celvin Alfiansyah | Full-Stack Web Developer |
+| Alkadafi Firnawan | Full-Stack Web Developer |
 
 ---
 
@@ -158,7 +158,7 @@ SIMU_Sistem-Informasi-Manajemen-Uang/
 ### Langkah 1 — Clone Repository
 
 ```bash
-git clone https://github.com/izzzaatul/Financial-Health-Prediction.git
+git clone https://github.com/alkadafii1/SIMU_Sistem-Informasi-Manajemen-Uang.git
 cd SIMU_Sistem-Informasi-Manajemen-Uang
 ```
 
