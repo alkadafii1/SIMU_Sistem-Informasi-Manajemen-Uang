@@ -1,8 +1,8 @@
-# 💰 SIMU - Sistem Informasi Manajemen Uang
+# SIMU - Sistem Informasi Manajemen Uang
 
 **Aplikasi pencatat dan perencana keuangan pribadi untuk generasi muda**
 
-> 🚀 **Coding Camp 2026 powered by DBS Foundation** — Tema: *Revolusi Teknologi Keuangan (Fintech) untuk Generasi Muda*
+> **Coding Camp 2026 powered by DBS Foundation** — Tema: *Revolusi Teknologi Keuangan (Fintech) untuk Generasi Muda*
 
 ![Version](https://img.shields.io/badge/Version-1.0.0-00685f?style=flat-square)
 ![React](https://img.shields.io/badge/React-19.2-61DAFB?style=flat-square&logo=react)
