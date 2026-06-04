@@ -53,7 +53,20 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           const description = tx.description || '';
           const amount = tx.amount;
           
-          if (description.includes('Alokasi dari Tabungan Umum ke')) {
+          if (description.startsWith('TRANSFER_GOAL:')) {
+            const parts = description.split(':');
+            const goalId = parts[1];
+            
+            if (savingsByGoal[goalId] !== undefined) {
+              savingsByGoal[goalId] += amount;
+            } else {
+              totalTopUpToGeneral += amount;
+            }
+          }
+          else if (description.startsWith('TRANSFER_GENERAL')) {
+            totalTopUpToGeneral += amount;
+          }
+          else if (description.includes('Alokasi dari Tabungan Umum ke')) {
             totalAllocatedToGoals += amount;
             
             for (const goal of userGoals) {
@@ -66,11 +79,33 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
                 }
               }
             }
-          } else {
+          }
+          // Fallback: anggap transfer ke general
+          else {
             totalTopUpToGeneral += amount;
           }
-        } else if (tx.category === 'Tarik dari Tabungan') {
-          totalWithdrawFromGeneral += tx.amount;
+        } 
+        else if (tx.category === 'Tarik dari Tabungan') {
+          const description = tx.description || '';
+          const amount = tx.amount;
+          
+          if (description.startsWith('WITHDRAW_GOAL:')) {
+            const parts = description.split(':');
+            const goalId = parts[1];
+            
+            if (savingsByGoal[goalId] !== undefined) {
+              savingsByGoal[goalId] -= amount;
+            } else {
+              totalWithdrawFromGeneral += amount;
+            }
+          }
+          else if (description.startsWith('WITHDRAW_GENERAL')) {
+            totalWithdrawFromGeneral += amount;
+          }
+          // Fallback
+          else {
+            totalWithdrawFromGeneral += amount;
+          }
         }
       });
       
@@ -211,7 +246,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
         type: 'income',
         amount: amount,
         category: 'Tarik dari Tabungan',
-        description: `Tarik dari Tabungan Umum`,
+        description: `WITHDRAW_GENERAL`,
         date: new Date().toISOString().split('T')[0]
       });
       
@@ -238,6 +273,11 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
     setDisplayAmount('');
     setSelectedAllocationGoal(null);
     setAllocationType('to_goal');
+  };
+
+  // Fungsi untuk navigasi ke TransactionPage dengan mode transfer
+  const handleTransferToSavings = () => {
+    navigate('/transaction', { state: { openTransferMode: true } });
   };
 
   const getGoalIcon = (goalId) => {
@@ -308,7 +348,6 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
           </button>
         </div>
         
-        {/* Button Atur & Transfer berjajar di bawah */}
         <div className="flex gap-3 mt-4">
           <button 
             onClick={() => navigate('/goals-setting')} 
@@ -318,7 +357,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
             {t('manageGoals')}
           </button>
           <button 
-            onClick={() => navigate('/transaction')} 
+            onClick={handleTransferToSavings}
             className="flex-1 py-2 text-center text-xs font-semibold bg-[#00685f] hover:bg-[#005049] text-white rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm"
           >
             <span className="material-symbols-outlined text-sm">savings</span>
@@ -580,7 +619,7 @@ const GoalsCard = ({ selectedGoals, formatRupiah, cardBg, borderColor, textPrima
             {t('manageGoals')}
           </button>
           <button 
-            onClick={() => navigate('/transaction')} 
+            onClick={handleTransferToSavings}
             className="flex-1 py-2 text-center text-xs font-semibold bg-[#00685f] hover:bg-[#005049] text-white rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm"
           >
             <span className="material-symbols-outlined text-sm">savings</span>

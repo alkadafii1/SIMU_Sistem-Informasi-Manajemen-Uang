@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useThemeStyles } from '../hooks/useThemeStyles';
 import { useLanguage } from '../context/LanguageContext';
@@ -7,17 +7,22 @@ import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 import { GOALS_OPTIONS } from '../constants/setupData';
 
-// Daftar kategori asli
+// Dafter Kategori
 const ORIGINAL_EXPENSE_CATEGORIES = [
-  'Makanan & Minuman',
-  'Belanja Harian',
-  'Transportasi',
-  'Tagihan & Utilitas',
-  'Hiburan & Hobi',
-  'Kesehatan',
-  'Pendidikan',
-  'Investasi',
-  'Lainnya'
+  { name: 'Makanan & Minuman', type: 'need' },
+  { name: 'Belanja Harian', type: 'need' },
+  { name: 'Transportasi', type: 'need' },
+  { name: 'Tagihan & Utilitas', type: 'need' },
+  { name: 'Sewa', type: 'need' },
+  { name: 'Cicilan', type: 'need' },
+  { name: 'Kesehatan', type: 'need' },
+  { name: 'Pendidikan', type: 'need' },
+  { name: 'Hiburan & Hobi', type: 'want' },
+  { name: 'Makan di Luar', type: 'want' },
+  { name: 'Belanja', type: 'want' },
+  { name: 'Olahraga', type: 'want' },
+  { name: 'Investasi', type: 'saving' },
+  { name: 'Lainnya', type: 'other' }
 ];
 
 const ORIGINAL_INCOME_CATEGORIES = [
@@ -34,15 +39,42 @@ const ORIGINAL_TRANSFER_CATEGORIES = [
   'Tarik dari Tabungan'
 ];
 
+// dark mode support untuk badge
+const getCategoryBadgeStyle = (type) => {
+  switch (type) {
+    case 'need':
+      return {
+        className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300',
+        label: 'Kebutuhan'
+      };
+    case 'want':
+      return {
+        className: 'bg-green-100 text-green-700 dark:bg-green-900/60 dark:text-green-300',
+        label: 'Keinginan'
+      };
+    case 'saving':
+      return {
+        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300',
+        label: 'Tabungan'
+      };
+    default:
+      return {
+        className: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+        label: 'Lainnya'
+      };
+  }
+};
+
 function TransactionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
   const { t, tc } = useLanguage();
   
   const [userData, setUserData] = useState({ name: '', email: '' });
   const [transactionType, setTransactionType] = useState('expense');
   const [amountString, setAmountString] = useState('');
-  const [category, setCategory] = useState(ORIGINAL_EXPENSE_CATEGORIES[0]);
+  const [category, setCategory] = useState(ORIGINAL_EXPENSE_CATEGORIES[0].name);
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [note, setNote] = useState('');
@@ -65,6 +97,17 @@ function TransactionPage() {
     remaining: 0,
     isLoading: true
   });
+
+  useEffect(() => {
+    const openTransferMode = location.state?.openTransferMode;
+    if (openTransferMode) {
+      setCategory('Transfer ke Tabungan');
+      setTransactionType('expense');
+      setAmountString('');
+      setShowCustomInput(false);
+      setSelectedWithdrawGoalId(null);
+    }
+  }, [location]);
 
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
@@ -118,18 +161,27 @@ function TransactionPage() {
           const description = tx.description || '';
           const amount = tx.amount;
           
-          for (const goal of userGoalsData) {
-            if (goal.isSelected) {
-              const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
-              const goalLabel = goalInfo?.label || goal.id;
-              
-              if (description.includes(goalLabel)) {
-                if (tx.category === 'Transfer ke Tabungan') {
+          if (description.startsWith('WITHDRAW_GOAL:')) {
+            const parts = description.split(':');
+            const goalId = parts[1];
+            if (savings[goalId] !== undefined) {
+              savings[goalId] -= amount;
+            }
+          } else if (description.startsWith('TRANSFER_GOAL:')) {
+            const parts = description.split(':');
+            const goalId = parts[1];
+            if (savings[goalId] !== undefined) {
+              savings[goalId] += amount;
+            }
+          } else if (description.includes('Alokasi dari Tabungan Umum ke')) {
+            for (const goal of userGoalsData) {
+              if (goal.isSelected) {
+                const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
+                const goalLabel = goalInfo?.label || goal.id;
+                if (description.includes(goalLabel)) {
                   savings[goal.id] = (savings[goal.id] || 0) + amount;
-                } else {
-                  savings[goal.id] = (savings[goal.id] || 0) - amount;
+                  break;
                 }
-                break;
               }
             }
           }
@@ -220,31 +272,19 @@ function TransactionPage() {
   const validateBalance = async (amount) => {
     if (category === 'Transfer ke Tabungan') {
       if (amount > financialData.activeBalance) {
-        return {
-          valid: false,
-          message: `Saldo aktif tidak mencukupi! Sisa saldo aktif: ${formatRupiah(financialData.activeBalance)}`
-        };
+        return { valid: false, message: `Saldo aktif tidak mencukupi! Sisa saldo aktif: ${formatRupiah(financialData.activeBalance)}` };
       }
     } else if (category === 'Tarik dari Tabungan') {
       if (!selectedWithdrawGoalId) {
-        return {
-          valid: false,
-          message: 'Pilih target tabungan yang akan ditarik!'
-        };
+        return { valid: false, message: 'Pilih target tabungan yang akan ditarik!' };
       }
       const goalSavings = savingsByGoal[selectedWithdrawGoalId] || 0;
       if (amount > goalSavings) {
-        return {
-          valid: false,
-          message: `Saldo tabungan untuk target ini tidak mencukupi! Saldo saat ini: ${formatRupiah(goalSavings)}`
-        };
+        return { valid: false, message: `Saldo tabungan untuk target ini tidak mencukupi! Saldo saat ini: ${formatRupiah(goalSavings)}` };
       }
     } else if (transactionType === 'expense') {
       if (amount > financialData.activeBalance) {
-        return {
-          valid: false,
-          message: `Saldo tidak mencukupi! Sisa saldo: ${formatRupiah(financialData.activeBalance)}`
-        };
+        return { valid: false, message: `Saldo tidak mencukupi! Sisa saldo: ${formatRupiah(financialData.activeBalance)}` };
       }
     }
     return { valid: true, message: '' };
@@ -261,7 +301,6 @@ function TransactionPage() {
 
   const handleKeyPress = (value) => {
     let newAmount = amountString;
-    
     if (value === 'backspace') {
       newAmount = amountString.slice(0, -1);
     } else if (value === '.') {
@@ -275,14 +314,19 @@ function TransactionPage() {
         newAmount = amountString + value;
       }
     }
-    
     if (newAmount.length <= 15) {
       setAmountString(newAmount);
     }
   };
 
-  const getExpenseCategories = () => ORIGINAL_EXPENSE_CATEGORIES.map(cat => tc(cat, 'expense'));
-  const getIncomeCategories = () => ORIGINAL_INCOME_CATEGORIES.map(cat => tc(cat, 'income'));
+  const getExpenseCategoryNames = () => ORIGINAL_EXPENSE_CATEGORIES.map(cat => cat.name);
+
+  const getCategoryBadge = (categoryName) => {
+    const categoryInfo = ORIGINAL_EXPENSE_CATEGORIES.find(cat => cat.name === categoryName);
+    return getCategoryBadgeStyle(categoryInfo?.type || 'other');
+  };
+
+  const getIncomeCategories = () => ORIGINAL_INCOME_CATEGORIES;
   const getTransferCategories = () => ORIGINAL_TRANSFER_CATEGORIES;
 
   const isCategoryActive = (displayCategory) => {
@@ -290,10 +334,10 @@ function TransactionPage() {
     if (category === 'Lainnya') {
       return displayCategory === 'Lainnya' || displayCategory === 'Others' || displayCategory === t('Other');
     }
-    const currentDisplayCategories = transactionType === 'expense' ? getExpenseCategories() : getIncomeCategories();
+    const currentDisplayCategories = transactionType === 'expense' ? getExpenseCategoryNames() : getIncomeCategories();
     const index = currentDisplayCategories.findIndex(cat => cat === displayCategory);
     if (index !== -1) {
-      const originalCategories = transactionType === 'expense' ? ORIGINAL_EXPENSE_CATEGORIES : ORIGINAL_INCOME_CATEGORIES;
+      const originalCategories = transactionType === 'expense' ? getExpenseCategoryNames() : ORIGINAL_INCOME_CATEGORIES;
       return originalCategories[index] === category;
     }
     return false;
@@ -307,14 +351,7 @@ function TransactionPage() {
       setCustomCategory('');
     } else {
       setShowCustomInput(false);
-      const currentDisplayCategories = transactionType === 'expense' ? getExpenseCategories() : getIncomeCategories();
-      const index = currentDisplayCategories.findIndex(cat => cat === selectedDisplayCategory);
-      if (index !== -1) {
-        const originalCategories = transactionType === 'expense' ? ORIGINAL_EXPENSE_CATEGORIES : ORIGINAL_INCOME_CATEGORIES;
-        setCategory(originalCategories[index]);
-      } else {
-        setCategory(selectedDisplayCategory);
-      }
+      setCategory(selectedDisplayCategory);
       setCustomCategory('');
     }
   };
@@ -375,28 +412,33 @@ function TransactionPage() {
 
     let finalCategory = category;
     let finalType = transactionType;
-    let finalDescription = note.trim();
+    let finalDescription = '';
 
     if (category === 'Transfer ke Tabungan') {
       finalType = 'expense';
       if (selectedGoalId) {
         const goalLabel = getGoalLabel(selectedGoalId);
-        finalDescription = note.trim() || `Transfer ke tabungan untuk ${goalLabel}`;
+        finalDescription = `TRANSFER_GOAL:${selectedGoalId}:${goalLabel}`;
+        if (note.trim()) finalDescription += `|${note.trim()}`;
       } else {
-        finalDescription = note.trim() || 'Transfer ke tabungan';
+        finalDescription = `TRANSFER_GENERAL`;
+        if (note.trim()) finalDescription += `|${note.trim()}`;
       }
-    } 
-    else if (category === 'Tarik dari Tabungan') {
+    } else if (category === 'Tarik dari Tabungan') {
       finalType = 'income';
       if (selectedWithdrawGoalId) {
         const goalLabel = getGoalLabel(selectedWithdrawGoalId);
-        finalDescription = note.trim() || `Tarik dari tabungan untuk ${goalLabel}`;
+        finalDescription = `WITHDRAW_GOAL:${selectedWithdrawGoalId}:${goalLabel}`;
+        if (note.trim()) finalDescription += `|${note.trim()}`;
       } else {
-        finalDescription = note.trim() || 'Tarik dari tabungan';
+        finalDescription = `WITHDRAW_GENERAL`;
+        if (note.trim()) finalDescription += `|${note.trim()}`;
       }
-    }
-    else if (category === 'Lainnya' && customCategory.trim()) {
+    } else if (category === 'Lainnya' && customCategory.trim()) {
       finalCategory = customCategory.trim();
+      finalDescription = note.trim() || finalCategory;
+    } else {
+      finalDescription = note.trim() || category;
     }
 
     if (transactionType === 'expense' && numericAmount > 5000000 && category !== 'Transfer ke Tabungan') {
@@ -425,7 +467,7 @@ function TransactionPage() {
         setNote('');
         setCustomCategory('');
         setShowCustomInput(false);
-        setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]);
+        setCategory(ORIGINAL_EXPENSE_CATEGORIES[0].name);
         setTransactionType('expense');
         setSelectedGoalId(null);
         setSelectedWithdrawGoalId(null);
@@ -443,10 +485,7 @@ function TransactionPage() {
           setTimeout(() => navigate('/setup-financial'), 2000);
         } else if (message.toLowerCase().includes('token') || message.toLowerCase().includes('unauthorized')) {
           message = 'Sesi Anda habis, silakan login kembali';
-          setTimeout(() => {
-            localStorage.clear();
-            navigate('/login');
-          }, 2000);
+          setTimeout(() => { localStorage.clear(); navigate('/login'); }, 2000);
         }
       }
       showToast(message, 'error');
@@ -493,29 +532,24 @@ function TransactionPage() {
     return false;
   })();
 
-  const expenseCategories = getExpenseCategories();
+  const expenseCategoryNames = getExpenseCategoryNames();
   const incomeCategories = getIncomeCategories();
   const transferCategories = getTransferCategories();
   const isTransferMode = category === 'Transfer ke Tabungan' || category === 'Tarik dari Tabungan';
   const isWithdrawMode = category === 'Tarik dari Tabungan';
   const isDepositMode = category === 'Transfer ke Tabungan';
-  const currentCategories = isTransferMode ? transferCategories : (transactionType === 'expense' ? expenseCategories : incomeCategories);
-  const totalPemasukan = financialData.totalIncome + financialData.income;
-
-  const getGoalIcon = (goalId) => {
-    const iconMap = { 'rumah': '🏠', 'mobil': '🚗', 'liburan': '✈️', 'gadget': '💻', 'darurat': '🛡️' };
-    return iconMap[goalId] || '🎯';
-  };
+  const currentCategories = isTransferMode ? transferCategories : (transactionType === 'expense' ? expenseCategoryNames : incomeCategories);
 
   const getCurrentGoalSavings = () => {
     if (!selectedWithdrawGoalId) return 0;
     return savingsByGoal[selectedWithdrawGoalId] || 0;
   };
 
+  // dark mode untuk state aktif
   const getActiveCategoryStyle = () => {
     if (isTransferMode) return 'bg-emerald-600 text-white shadow-md';
-    if (transactionType === 'expense') return 'bg-rose-100 text-rose-700 border-rose-300';
-    return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+    if (transactionType === 'expense') return 'bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700';
+    return 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700';
   };
 
   return (
@@ -527,9 +561,7 @@ function TransactionPage() {
           vertical-align: middle;
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .toast-slide {
-          animation: slideDown 0.3s ease forwards;
-        }
+        .toast-slide { animation: slideDown 0.3s ease forwards; }
         @keyframes slideDown {
           from { opacity: 0; transform: translateY(-20px); }
           to { opacity: 1; transform: translateY(0); }
@@ -610,7 +642,7 @@ function TransactionPage() {
 
               <div className={`${cardBg} rounded-xl border ${borderColor} p-1 flex gap-1 mb-6`}>
                 <button 
-                  onClick={() => { setTransactionType('expense'); setCategory(ORIGINAL_EXPENSE_CATEGORIES[0]); setAmountString(''); setShowCustomInput(false); setCustomCategory(''); setSelectedGoalId(null); setSelectedWithdrawGoalId(null); }} 
+                  onClick={() => { setTransactionType('expense'); setCategory(ORIGINAL_EXPENSE_CATEGORIES[0].name); setAmountString(''); setShowCustomInput(false); setCustomCategory(''); setSelectedGoalId(null); setSelectedWithdrawGoalId(null); }} 
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${!isTransferMode && transactionType === 'expense' ? 'bg-rose-500 text-white' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800`}`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">arrow_downward</span> Pengeluaran
@@ -656,9 +688,7 @@ function TransactionPage() {
 
                     {(category === 'Transfer ke Tabungan' || category === 'Tarik dari Tabungan') && amountString && amountString !== '0' && (
                       <div className="mt-2">
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>
-                          Saldo Tabungan setelah transaksi:
-                        </p>
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Tabungan setelah transaksi:</p>
                         <p className={`text-sm font-semibold ${category === 'Transfer ke Tabungan' ? 'text-emerald-600' : 'text-amber-600'}`}>
                           {formatRupiah(previewSavingsBalance)}
                         </p>
@@ -667,9 +697,7 @@ function TransactionPage() {
 
                     {category === 'Tarik dari Tabungan' && selectedWithdrawGoalId && amountString && amountString !== '0' && (
                       <div className="mt-2">
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>
-                          Saldo Target setelah tarik:
-                        </p>
+                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Target setelah tarik:</p>
                         <p className={`text-sm font-semibold ${previewSavingsBalance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
                           {formatRupiah(savingsByGoal[selectedWithdrawGoalId] - parseFloat(amountString))}
                         </p>
@@ -723,8 +751,9 @@ function TransactionPage() {
                       <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Pilih Target Tabungan</p>
                       <div className="grid grid-cols-2 gap-2">
                         <button onClick={() => setSelectedGoalId(null)} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
-                          selectedGoalId === null ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 
-                          `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
+                          selectedGoalId === null
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+                            : `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
                         }`}>
                           Tanpa Target
                         </button>
@@ -774,40 +803,74 @@ function TransactionPage() {
                       {isTransferMode ? 'Pilih Jenis Transfer' : 'Kategori'}
                     </p>
                     <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                      {currentCategories.map((cat) => (
-                        <button 
-                          key={cat} 
-                          onClick={() => isTransferMode ? handleTransferSelect(cat) : handleCategorySelect(cat)} 
-                          className={`py-2 px-2 rounded-lg text-xs font-medium text-center transition-all ${
-                            (isTransferMode ? category === cat : isCategoryActive(cat)) 
-                              ? getActiveCategoryStyle() 
-                              : `${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'} border border-transparent`
-                          }`}
-                        >
-                          {cat}
-                        </button>
-                      ))}
+                      {currentCategories.map((cat) => {
+                        const isActive = isTransferMode ? category === cat : isCategoryActive(cat);
+                        const badge = !isTransferMode && transactionType === 'expense' ? getCategoryBadge(cat) : null;
+
+                        return (
+                          <button
+                            key={cat}
+                            onClick={() => isTransferMode ? handleTransferSelect(cat) : handleCategorySelect(cat)}
+                            className={`py-2 px-2 rounded-lg text-xs font-medium text-left transition-all flex items-center justify-between gap-1 ${
+                              isActive
+                                ? getActiveCategoryStyle()
+                                : `${isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'} border border-transparent`
+                            }`}
+                          >
+                            <span className="truncate">{cat}</span>
+                            {badge && (
+                              <span className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                                isActive ? 'bg-white/20 text-white' : badge.className
+                              }`}>
+                                {badge.label}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
+
                     {showCustomInput && (
-                      <input 
-                        type="text" 
-                        placeholder="Kategori lain" 
-                        value={customCategory} 
-                        onChange={(e) => { setCustomCategory(e.target.value); setCategory(e.target.value); }} 
-                        className={`w-full mt-2 px-3 py-2 text-sm ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg focus:outline-none focus:border-emerald-500`} 
+                      <input
+                        type="text"
+                        placeholder="Kategori lain"
+                        value={customCategory}
+                        onChange={(e) => { setCustomCategory(e.target.value); setCategory(e.target.value); }}
+                        className={`w-full mt-2 px-3 py-2 text-sm ${isDarkMode ? 'bg-gray-800 text-white placeholder-gray-500' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} border ${borderColor} rounded-lg focus:outline-none focus:border-emerald-500`}
                       />
+                    )}
+                    
+                    {/* Kategori */}
+                    {!isTransferMode && transactionType === 'expense' && (
+                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <p className={`text-[10px] mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>📌 Keterangan:</p>
+                        <div className="flex flex-wrap gap-3 text-[9px]">
+                          <span className={`flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            Kebutuhan (Needs)
+                          </span>
+                          <span className={`flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            Keinginan (Wants)
+                          </span>
+                          <span className={`flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                            Tabungan/Investasi
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </div>
 
                   <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
                     <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Catatan</p>
-                    <textarea 
-                      rows="2" 
-                      placeholder="Tambahkan catatan..." 
-                      value={note} 
-                      onChange={e => setNote(e.target.value)} 
-                      maxLength={200} 
-                      className={`w-full px-3 py-2 text-sm ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg focus:outline-none focus:border-emerald-500 resize-none`} 
+                    <textarea
+                      rows="2"
+                      placeholder="Tambahkan catatan..."
+                      value={note}
+                      onChange={e => setNote(e.target.value)}
+                      maxLength={200}
+                      className={`w-full px-3 py-2 text-sm ${isDarkMode ? 'bg-gray-800 text-white placeholder-gray-500' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} border ${borderColor} rounded-lg focus:outline-none focus:border-emerald-500 resize-none`}
                     />
                     <p className="text-right text-[10px] text-gray-400 mt-1">{note.length}/200</p>
                   </div>
@@ -828,9 +891,7 @@ function TransactionPage() {
       </div>
 
       <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track {
           background: ${isDarkMode ? '#374151' : '#f1f1f1'};
           border-radius: 10px;

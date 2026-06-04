@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import IncomeInput from '../components/SetupFinancial/IncomeInput';
 import AllocationSlider from '../components/SetupFinancial/AllocationSlider';
-import GoalsSelector from '../components/SetupFinancial/GoalsSelector';
 import PreviewChart from '../components/SetupFinancial/PreviewChart';
 import { ALLOCATION_COLORS } from '../constants/setupData';
 
@@ -19,9 +18,6 @@ const SetupFinancial = () => {
   const [pctKebutuhan, setPctKebutuhan] = useState(50);
   const [pctKeinginan, setPctKeinginan] = useState(30);
   const [pctTabungan, setPctTabungan] = useState(20);
-  
-  // State goals
-  const [selectedGoals, setSelectedGoals] = useState(['rumah']);
 
   const totalPercentage = pctKebutuhan + pctKeinginan + pctTabungan;
   const isValid = totalPercentage === 100 && income > 0;
@@ -78,15 +74,6 @@ const SetupFinancial = () => {
     }).format(angka);
   };
 
-  // Toggle goal selection
-  const toggleGoal = (id) => {
-    if (selectedGoals.includes(id)) {
-      setSelectedGoals(selectedGoals.filter(g => g !== id));
-    } else {
-      setSelectedGoals([...selectedGoals, id]);
-    }
-  };
-
   // Handle apply strategy
   const handleApplyStrategy = async () => {
     if (!isValid) {
@@ -103,7 +90,6 @@ const SetupFinancial = () => {
           keinginan: pctKeinginan,
           tabungan: pctTabungan
         },
-        goals: selectedGoals
       });
 
       if (response.data.success) {
@@ -173,6 +159,16 @@ const SetupFinancial = () => {
           </div>
         </div>
 
+        {/* ⚠️ Peringatan */}
+        <div className="mb-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 shadow-md">
+            <p className="text-xs text-amber-700 flex items-center gap-2">
+              <span className="material-symbols-outlined text-sm">info</span>
+              ⚠️ Setup hanya dilakukan SEKALI. Alokasi ini akan digunakan untuk dashboard Anda.
+            </p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           {/* Kolom kiri - Setup */}
@@ -227,8 +223,6 @@ const SetupFinancial = () => {
               />
             </div>
 
-            {/* Pilihan Goals */}
-            <GoalsSelector selectedGoals={selectedGoals} toggleGoal={toggleGoal} />
           </div>
 
           {/* Kolom Kanan - Preview Chart */}
@@ -272,16 +266,7 @@ const SetupFinancial = () => {
           </div>
         </div>
       </div>
-
-      {/* Informasi Penting */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20">
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 shadow-md">
-          <p className="text-xs text-amber-700 flex items-center gap-2">
-            <span className="material-symbols-outlined text-sm">info</span>
-            ⚠️ Setup hanya dilakukan SEKALI. Alokasi ini akan digunakan untuk dashboard Anda.
-          </p>
-        </div>
-      </div>
+      
     </div>
   );
 };
