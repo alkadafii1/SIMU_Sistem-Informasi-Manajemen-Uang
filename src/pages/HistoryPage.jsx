@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useThemeStyles } from '../hooks/useThemeStyles';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 import Spinner from '../components/Spinner';
@@ -9,22 +10,23 @@ import Spinner from '../components/Spinner';
 function HistoryPage() {
   const navigate = useNavigate();
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
-  
+  const { t, tc } = useLanguage();
+
   const [userData, setUserData] = useState({ name: '', email: '' });
-  const [transactions, setTransactions] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [filteredTransactions, setFilteredTransactions] = useState([]);
+  const [displayedTransactions, setDisplayedTransactions] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [timeFilter, setTimeFilter] = useState('semua');
-  const [typeFilter, setTypeFilter] = useState('semua'); 
+  const [typeFilter, setTypeFilter] = useState('semua');
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [sortOrder, setSortOrder] = useState('desc');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-  const [sortOrder, setSortOrder] = useState('desc');
-
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
@@ -51,12 +53,9 @@ function HistoryPage() {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
-    
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const transactionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    
-    const diffTime = today - transactionDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor((today - transactionDate) / (1000 * 60 * 60 * 24));
     
     if (diffDays === 0) return 'Hari ini';
     if (diffDays === 1) return 'Kemarin';
@@ -64,102 +63,144 @@ function HistoryPage() {
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  const fetchTransactions = useCallback(async (reset = true) => {
-    if (reset) {
-      setLoading(true);
-      setPage(1);
-      setHasMore(true);
-    } else {
-      setLoadingMore(true);
+  // Icon functions
+  const getTransactionIcon = (type, category) => {
+    if (type === 'income' && category !== 'Tarik dari Tabungan') return 'payments';
+    if (category === 'Transfer ke Tabungan') return 'savings';
+    if (category === 'Tarik dari Tabungan') return 'arrow_upward';
+    const expenseIcons = {
+      'Makanan & Minuman': 'restaurant',
+      'Belanja Harian': 'shopping_cart',
+      'Transportasi': 'directions_car',
+      'Tagihan & Utilitas': 'receipt',
+      'Hiburan & Hobi': 'sports_esports',
+      'Kesehatan': 'health_and_safety',
+      'Pendidikan': 'school',
+      'Investasi': 'trending_up',
+    };
+    return expenseIcons[category] || 'shopping_bag';
+  };
+
+  const getIconBgColor = (category, type) => {
+    if (category === 'Transfer ke Tabungan') {
+      return isDarkMode ? 'bg-rose-900/40 text-rose-400' : 'bg-rose-50 text-rose-500';
     }
+    if (category === 'Tarik dari Tabungan') {
+      return isDarkMode ? 'bg-amber-900/40 text-amber-400' : 'bg-amber-50 text-amber-600';
+    }
+    if (type === 'expense') {
+      return isDarkMode ? 'bg-rose-900/40 text-rose-400' : 'bg-rose-50 text-rose-500';
+    }
+    return isDarkMode ? 'bg-teal-900/40 text-teal-400' : 'bg-teal-50 text-teal-700';
+  };
 
+  const getAmountColor = (type, category) => {
+    const isExpense = type === 'expense';
+    const isTransfer = category === 'Transfer ke Tabungan';
+    const isWithdraw = category === 'Tarik dari Tabungan';
+    if (isExpense || isTransfer) {
+      return isDarkMode ? 'text-rose-400' : 'text-rose-600';
+    }
+    if (isWithdraw) {
+      return isDarkMode ? 'text-amber-400' : 'text-amber-600';
+    }
+    return isDarkMode ? 'text-emerald-400' : 'text-emerald-600';
+  };
+
+  const applyFiltersAndSort = useCallback(() => {
+    let filtered = [...allTransactions];
+    
+    // Filter by type
+    if (typeFilter !== 'semua') {
+      filtered = filtered.filter(t => t.type === typeFilter);
+    }
+    
+    // Filter by time range
+    const now = new Date();
+    if (timeFilter === 'hariIni') {
+      const todayStr = now.toISOString().split('T')[0];
+      filtered = filtered.filter(t => t.date === todayStr);
+    } else if (timeFilter === 'mingguIni') {
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      const startStr = startOfWeek.toISOString().split('T')[0];
+      filtered = filtered.filter(t => t.date >= startStr);
+    } else if (timeFilter === 'bulanIni') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startStr = startOfMonth.toISOString().split('T')[0];
+      filtered = filtered.filter(t => t.date >= startStr);
+    }
+    
+    // Filter by search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(t => 
+        (t.description && t.description.toLowerCase().includes(query)) ||
+        (t.category && t.category.toLowerCase().includes(query))
+      );
+    }
+    
+    // SORT (client-side, langsung)
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+    
+    setFilteredTransactions(filtered);
+    
+    // Update pagination
+    setCurrentPage(1);
+    const newDisplayed = filtered.slice(0, ITEMS_PER_PAGE);
+    setDisplayedTransactions(newDisplayed);
+    setHasMore(filtered.length > ITEMS_PER_PAGE);
+  }, [allTransactions, typeFilter, timeFilter, searchQuery, sortOrder]);
+
+  // Panggil filter setiap kali ada perubahan
+  useEffect(() => {
+    if (allTransactions.length > 0) {
+      applyFiltersAndSort();
+    }
+  }, [allTransactions, typeFilter, timeFilter, searchQuery, sortOrder, applyFiltersAndSort]);
+
+  // Fetch all data sekali saja
+  const fetchAllTransactions = useCallback(async () => {
+    setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.append('limit', ITEMS_PER_PAGE);
-      params.append('page', reset ? 1 : page);
-      
-      if (typeFilter !== 'semua') {
-        params.append('type', typeFilter);
-      }
-      
-      const now = new Date();
-      if (timeFilter === 'hariIni') {
-        params.append('startDate', now.toISOString().split('T')[0]);
-      } else if (timeFilter === 'mingguIni') {
-        const startOfWeek = new Date(now);
-        const day = now.getDay();
-        startOfWeek.setDate(now.getDate() - day);
-        params.append('startDate', startOfWeek.toISOString().split('T')[0]);
-      } else if (timeFilter === 'bulanIni') {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        params.append('startDate', startOfMonth.toISOString().split('T')[0]);
-      }
-
-      const response = await api.get(`/transactions?${params.toString()}`);
-      
-      let newTransactions = response.data.transactions || [];
-      const totalFromServer = response.data.count || newTransactions.length;
-      setTotalCount(totalFromServer);
-      
-      let filteredBySearch = [...newTransactions];
-      if (searchQuery) {
-        filteredBySearch = filteredBySearch.filter(trx => 
-          (trx.description && trx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (trx.category && trx.category.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-        setFilteredTotal(filteredBySearch.length);
-      } else {
-        setFilteredTotal(totalFromServer);
-      }
-      
-      filteredBySearch.sort((a, b) => {
-        const dateA = new Date(a.date || a.createdAt);
-        const dateB = new Date(b.date || b.createdAt);
-        return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-      });
-
-      if (reset) {
-        setTransactions(filteredBySearch);
-        const hasMoreData = filteredBySearch.length === ITEMS_PER_PAGE && filteredBySearch.length < totalFromServer;
-        setHasMore(hasMoreData);
-      } else {
-        setTransactions(prev => {
-          const existingIds = new Set(prev.map(t => t.id));
-          const newUnique = filteredBySearch.filter(t => !existingIds.has(t.id));
-          const updated = [...prev, ...newUnique];
-          const hasMoreData = updated.length < totalFromServer && newUnique.length === ITEMS_PER_PAGE;
-          setHasMore(hasMoreData);
-          return updated;
-        });
-        setPage(prev => prev + 1);
-      }
-      
+      const response = await api.get('/transactions?limit=1000&page=1');
+      setAllTransactions(response.data.transactions || []);
     } catch (error) {
       console.error('Gagal mengambil transaksi:', error);
       if (error.response?.status === 401) {
         localStorage.clear();
         navigate('/login');
-      } else if (error.response?.status === 500) {
-        setHasMore(false);
-        showToast('Data sudah habis', 'info');
       } else {
         showToast('Gagal memuat data', 'error');
       }
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, [typeFilter, timeFilter, searchQuery, sortOrder, page, navigate]);
+  }, [navigate]);
 
   useEffect(() => {
-    fetchTransactions(true);
-  }, [typeFilter, timeFilter, searchQuery, sortOrder]);
+    fetchAllTransactions();
+  }, []);
 
+  // Load more
+  const loadMore = () => {
+    const nextPage = currentPage + 1;
+    const newDisplayed = filteredTransactions.slice(0, nextPage * ITEMS_PER_PAGE);
+    setDisplayedTransactions(newDisplayed);
+    setCurrentPage(nextPage);
+    setHasMore(newDisplayed.length < filteredTransactions.length);
+  };
+
+  // Delete transaction
   const handleDeleteTransaction = async (id) => {
     try {
       await api.delete(`/transactions/${id}`);
       showToast('Transaksi berhasil dihapus', 'success');
-      fetchTransactions(true);
+      fetchAllTransactions();
     } catch (error) {
       console.error('Gagal menghapus transaksi:', error);
       showToast(error.response?.data?.message || 'Gagal menghapus transaksi', 'error');
@@ -168,14 +209,15 @@ function HistoryPage() {
     }
   };
 
+  // Export CSV
   const handleExportCSV = () => {
-    if (transactions.length === 0) {
+    if (filteredTransactions.length === 0) {
       showToast('Tidak ada data untuk diekspor', 'error');
       return;
     }
 
     const headers = ['Tanggal', 'Tipe', 'Kategori', 'Deskripsi', 'Jumlah'];
-    const csvData = transactions.map(trx => [
+    const csvData = filteredTransactions.map(trx => [
       trx.date,
       trx.type === 'expense' ? 'Pengeluaran' : 'Pemasukan',
       trx.category,
@@ -197,29 +239,14 @@ function HistoryPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
     showToast('Data berhasil diekspor', 'success');
   };
 
-  const totalTransactions = transactions.length;
-  const totalIncomeTransactions = transactions.filter(t => t.type === 'income').length;
-  const totalExpenseTransactions = transactions.filter(t => t.type === 'expense').length;
-
+  const totalIncomeTransactions = filteredTransactions.filter(t => t.type === 'income').length;
+  const totalExpenseTransactions = filteredTransactions.filter(t => t.type === 'expense').length;
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
 
-  const getCategoryIconColor = (category, type) => {
-    if (category === 'Tarik dari Tabungan') return 'text-amber-600 dark:text-amber-400';
-    if (type === 'expense') return 'text-rose-600 dark:text-rose-400';
-    return 'text-emerald-600 dark:text-emerald-400';
-  };
-
-  const getCategoryIconBg = (category, type) => {
-    if (category === 'Tarik dari Tabungan') return 'bg-amber-50 dark:bg-amber-900/20';
-    if (type === 'expense') return 'bg-rose-50 dark:bg-rose-900/20';
-    return 'bg-emerald-50 dark:bg-emerald-900/20';
-  };
-
-  if (loading && transactions.length === 0) {
+  if (loading) {
     return <Spinner fullScreen text="Memuat riwayat transaksi..." />;
   }
 
@@ -227,33 +254,22 @@ function HistoryPage() {
     <div className={`min-h-screen ${bgColor}`}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
-        .material-symbols-outlined {
-          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-          vertical-align: middle;
-        }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .toast-slide {
-          animation: slideDown 0.3s ease forwards;
-        }
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+        .toast-slide { animation: slideDown 0.3s ease forwards; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
-      {/* Toast Notification */}
+      {/* Toast */}
       {toast.show && (
         <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-50 toast-slide w-auto max-w-md px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
         }`}>
-          <span className="material-symbols-outlined text-xl">
-            {toast.type === 'success' ? 'check_circle' : 'error'}
-          </span>
+          <span className="material-symbols-outlined text-xl">{toast.type === 'success' ? 'check_circle' : 'error'}</span>
           <p className="text-sm font-medium">{toast.message}</p>
         </div>
       )}
 
-      {/* Delete Confirm Dialog */}
+      {/* Delete Confirm */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`${cardBg} rounded-2xl max-w-md w-full shadow-xl overflow-hidden`}>
@@ -268,18 +284,8 @@ function HistoryPage() {
               <p className={`text-sm ${textSecondary}`}>Tindakan ini tidak dapat dibatalkan.</p>
             </div>
             <div className={`p-5 border-t ${borderColor} flex gap-3`}>
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
-              >
-                Batal
-              </button>
-              <button
-                onClick={() => handleDeleteTransaction(showDeleteConfirm)}
-                className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all"
-              >
-                Hapus
-              </button>
+              <button onClick={() => setShowDeleteConfirm(null)} className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">Batal</button>
+              <button onClick={() => handleDeleteTransaction(showDeleteConfirm)} className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all">Hapus</button>
             </div>
           </div>
         </div>
@@ -296,12 +302,8 @@ function HistoryPage() {
                 <h1 className={`text-xl font-bold ${textPrimary}`}>Riwayat Aktivitas</h1>
                 <p className={`text-xs ${textSecondary} mt-0.5`}>Kelola dan lihat semua transaksi keuangan Anda</p>
               </div>
-              <button
-                onClick={handleExportCSV}
-                className="flex items-center justify-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all shadow-sm"
-              >
-                <span className="material-symbols-outlined text-base">download</span>
-                Export CSV
+              <button onClick={handleExportCSV} className="flex items-center justify-center gap-2 bg-[#00685f] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#005049] transition-all shadow-sm">
+                <span className="material-symbols-outlined text-base">download</span> Export CSV
               </button>
             </div>
           </div>
@@ -309,237 +311,123 @@ function HistoryPage() {
           <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             <div className="max-w-6xl mx-auto space-y-5">
               
-              {/* Statistik Ringkasan */}
+              {/* Statistik */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-xs ${textSecondary}`}>Total Transaksi</p>
-                      <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{totalTransactions}</p>
+                      <p className={`text-xl md:text-2xl font-bold ${textPrimary}`}>{filteredTransactions.length}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-gray-400 dark:text-gray-500">receipt_long</span>
                   </div>
-                  <p className={`text-[10px] ${textSecondary} mt-2`}>Semua aktivitas keuangan</p>
                 </div>
-                
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>Transaksi Pemasukan</p>
+                      <p className={`text-xs ${textSecondary}`}>Pemasukan</p>
                       <p className={`text-xl md:text-2xl font-bold text-emerald-600 dark:text-emerald-400`}>{totalIncomeTransactions}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-emerald-500 dark:text-emerald-400">arrow_upward</span>
                   </div>
-                  <p className={`text-[10px] ${textSecondary} mt-2`}>Jumlah transaksi pemasukan</p>
                 </div>
-                
                 <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-4`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-xs ${textSecondary}`}>Transaksi Pengeluaran</p>
+                      <p className={`text-xs ${textSecondary}`}>Pengeluaran</p>
                       <p className={`text-xl md:text-2xl font-bold text-rose-600 dark:text-rose-400`}>{totalExpenseTransactions}</p>
                     </div>
                     <span className="material-symbols-outlined text-2xl md:text-3xl text-rose-500 dark:text-rose-400">arrow_downward</span>
                   </div>
-                  <p className={`text-[10px] ${textSecondary} mt-2`}>Jumlah transaksi pengeluaran</p>
                 </div>
               </div>
 
-              {/* Filter Section */}
+              {/* Filter */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm p-4 md:p-5`}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">search</span>
-                    <input
-                      type="text"
-                      placeholder="Cari transaksi..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`w-full pl-9 pr-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
-                    />
+                    <input type="text" placeholder="Cari transaksi..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full pl-9 pr-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f]`} />
                   </div>
-
-                  <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
-                    className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
-                  >
+                  <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f]`}>
                     <option value="semua">Semua Tipe</option>
                     <option value="income">Pemasukan</option>
                     <option value="expense">Pengeluaran</option>
                   </select>
-
-                  <select
-                    value={timeFilter}
-                    onChange={(e) => setTimeFilter(e.target.value)}
-                    className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f]`}
-                  >
+                  <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className={`px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900'} border ${borderColor} rounded-lg text-sm focus:outline-none focus:border-[#00685f] focus:ring-1 focus:ring-[#00685f]`}>
                     <option value="semua">Semua Waktu</option>
                     <option value="hariIni">Hari Ini</option>
                     <option value="mingguIni">Minggu Ini</option>
                     <option value="bulanIni">Bulan Ini</option>
                   </select>
-
-                  <button
-                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'} border ${borderColor} rounded-lg text-sm transition-all`}
-                  >
-                    <span className="material-symbols-outlined text-base">
-                      {sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}
-                    </span>
+                  <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className={`flex items-center justify-center gap-2 px-3 py-2 ${isDarkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'} border ${borderColor} rounded-lg text-sm transition-all`}>
+                    <span className="material-symbols-outlined text-base">{sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward'}</span>
                     {sortOrder === 'desc' ? 'Terbaru' : 'Terlama'}
                   </button>
                 </div>
               </div>
 
-              {/* Transactions Table */}
+              {/* List Transaksi */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm overflow-hidden`}>
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full">
-                    <thead className={`${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} border-b ${borderColor}`}>
-                      <tr>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">No</th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Tanggal</th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Kategori</th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Deskripsi</th>
-                        <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Jumlah</th>
-                        <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className={`divide-y ${borderColor}`}>
-                      {transactions.length === 0 ? (
-                        <tr>
-                          <td colSpan="6" className="text-center py-12">
-                            <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
-                            <p className="text-sm text-gray-400 dark:text-gray-500">Belum ada transaksi</p>
-                            <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ Catat transaksi pertama</button>
-                          </td>
-                        </tr>
-                      ) : (
-                        transactions.map((transaction, index) => (
-                          <tr 
-                            key={`${transaction.id}_${transaction.createdAt}`} 
-                            className={`${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} transition-all`}
-                          >
-                            <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{index + 1}</td>
-                            <td className="px-6 py-3">
-                              <div className={`text-xs font-medium ${textPrimary}`}>{formatDate(transaction.date)}</div>
-                              <div className={`text-[10px] ${textSecondary}`}>{transaction.date}</div>
-                            </td>
-                            <td className="px-6 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${getCategoryIconBg(transaction.category, transaction.type)}`}>
-                                  <span className={`material-symbols-outlined text-sm ${getCategoryIconColor(transaction.category, transaction.type)}`}>
-                                    {transaction.type === 'expense' ? (transaction.category === 'Transfer ke Tabungan' ? 'savings' : 'shopping_bag') : 'payments'}
-                                  </span>
-                                </div>
-                                <span className={`text-xs font-medium ${textPrimary}`}>{transaction.category}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-3">
-                              <span className={`text-xs ${textSecondary}`}>{transaction.description || '-'}</span>
-                            </td>
-                            <td className={`px-6 py-3 text-right text-sm font-bold ${
-                              transaction.type === 'expense' 
-                                ? 'text-rose-600 dark:text-rose-400' 
-                                : 'text-emerald-600 dark:text-emerald-400'
-                            }`}>
-                              {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
-                            </td>
-                            <td className="px-6 py-3 text-center">
-                              <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 transition-all" title="Hapus">
-                                <span className="material-symbols-outlined text-base">delete</span>
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile View */}
-                <div className="block md:hidden">
-                  {transactions.length === 0 ? (
-                    <div className="text-center py-12">
-                      <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
-                      <p className="text-sm text-gray-400 dark:text-gray-500">Belum ada transaksi</p>
-                      <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ Catat transaksi pertama</button>
-                    </div>
-                  ) : (
-                    <div className={`divide-y ${borderColor}`}>
-                      {transactions.map((transaction, index) => (
-                        <div key={`${transaction.id}_${transaction.createdAt}_mobile`} className={`p-4 border-b ${borderColor}`}>
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex items-center gap-2 flex-1">
-                              <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400">{index + 1}</span>
-                              </div>
-                              <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${getCategoryIconBg(transaction.category, transaction.type)}`}>
-                                <span className={`material-symbols-outlined text-base ${getCategoryIconColor(transaction.category, transaction.type)}`}>
-                                  {transaction.type === 'expense' ? (transaction.category === 'Transfer ke Tabungan' ? 'savings' : 'shopping_bag') : 'payments'}
-                                </span>
-                              </div>
-                              <div className="flex-1">
-                                <p className={`text-sm font-semibold ${textPrimary}`}>{transaction.category}</p>
-                                <p className={`text-[10px] ${textSecondary} mt-0.5`}>{transaction.description || 'Tidak ada catatan'}</p>
-                              </div>
+                {displayedTransactions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
+                    <p className={`text-sm ${textSecondary}`}>Belum ada transaksi</p>
+                    <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ Catat transaksi pertama</button>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {displayedTransactions.map((transaction) => {
+                      const translatedCategory = tc(transaction.category, transaction.type);
+                      const dateLabel = formatDate(transaction.date);
+                      const isTransferToSavings = transaction.category === 'Transfer ke Tabungan';
+                      return (
+                        <div key={transaction.id} className={`flex items-center gap-3 p-4 hover:${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'} transition-all duration-150`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBgColor(transaction.category, transaction.type)}`}>
+                            <span className="material-symbols-outlined text-base">{getTransactionIcon(transaction.type, transaction.category)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`text-sm font-semibold ${textPrimary} truncate max-w-[150px] sm:max-w-[200px]`}>{translatedCategory}</p>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${isDarkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                                {transaction.type === 'expense' || isTransferToSavings ? 'Pengeluaran' : 'Pemasukan'}
+                              </span>
                             </div>
-                            <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 transition-all p-1 flex-shrink-0">
+                            {transaction.description && transaction.description !== transaction.category && (
+                              <p className={`text-[10px] ${textSecondary} truncate mt-0.5`}>{transaction.description}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-[9px] ${textSecondary}`}>{dateLabel}</span>
+                              <span className={`text-[9px] ${textSecondary}`}>•</span>
+                              <span className={`text-[9px] ${textSecondary}`}>{transaction.date}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <p className={`text-sm font-bold ${getAmountColor(transaction.type, transaction.category)}`}>
+                              {transaction.type === 'expense' || isTransferToSavings ? '-' : '+'}{formatRupiah(transaction.amount)}
+                            </p>
+                            <button onClick={() => setShowDeleteConfirm(transaction.id)} className="text-gray-400 hover:text-rose-600 transition-all p-1" title="Hapus">
                               <span className="material-symbols-outlined text-base">delete</span>
                             </button>
                           </div>
-                          <div className="flex justify-between items-center pt-3 border-t border-gray-100 dark:border-gray-700">
-                            <div>
-                              <p className={`text-[10px] ${textSecondary}`}>{formatDate(transaction.date)}</p>
-                              <p className={`text-[9px] ${textSecondary} mt-0.5`}>{transaction.date}</p>
-                            </div>
-                            <p className={`text-sm font-bold ${
-                              transaction.type === 'expense' 
-                                ? 'text-rose-600' 
-                                : 'text-emerald-600'
-                            }`}>
-                              {transaction.type === 'expense' ? '-' : '+'}{formatRupiah(transaction.amount)}
-                            </p>
-                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-                {/* Load More Button */}
-                {hasMore && transactions.length > 0 && transactions.length < filteredTotal && (
+                {/* Load More */}
+                {hasMore && displayedTransactions.length > 0 && (
                   <div className="p-4 border-t border-gray-100 dark:border-gray-700 text-center">
-                    <button
-                      onClick={() => fetchTransactions(false)}
-                      disabled={loadingMore}
-                      className={`px-6 py-2 text-sm font-medium rounded-lg transition-all disabled:opacity-50 ${
-                        isDarkMode 
-                          ? 'text-[#00685f] hover:bg-gray-800' 
-                          : 'text-[#00685f] hover:bg-gray-50'
-                      }`}
-                    >
-                      {loadingMore ? (
-                        <span className="flex items-center gap-2 justify-center">
-                          <Spinner size="xs" text="Memuat..." />
-                        </span>
-                      ) : (
-                        'Muat Lebih Banyak'
-                      )}
-                    </button>
+                    <button onClick={loadMore} className="px-6 py-2 text-sm font-medium rounded-lg transition-all text-[#00685f] hover:bg-gray-50 dark:hover:bg-gray-800">Muat Lebih Banyak</button>
                   </div>
                 )}
               </div>
 
               {/* Info Footer */}
-              {transactions.length > 0 && (
+              {filteredTransactions.length > 0 && (
                 <div className="text-center text-xs text-gray-400 dark:text-gray-500">
-                  Menampilkan {transactions.length} 
-                  {searchQuery ? ' hasil pencarian' : ' transaksi'}
-                  {searchQuery && totalCount !== transactions.length && (
-                    <span> dari {totalCount} total transaksi</span>
-                  )}
+                  Menampilkan {displayedTransactions.length} dari {filteredTransactions.length} transaksi
                 </div>
               )}
             </div>

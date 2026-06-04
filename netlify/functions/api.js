@@ -406,7 +406,7 @@ app.put('/api/user/goals', async (req, res) => {
 });
 
 // TRANSACTIONS ENDPOINTS
-// Get Transactions dengan filter & pagination
+// GET /api/transactions 
 app.get('/api/transactions', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -419,10 +419,11 @@ app.get('/api/transactions', async (req, res) => {
     const userId = decoded.userId;
     
     // Ambil parameter filter dari query string
-    const { type, startDate, endDate, limit, page } = req.query;
+    const { type, startDate, endDate, limit, page, sort } = req.query;
     const limitNum = parseInt(limit) || 10;
     const pageNum = parseInt(page) || 1;
     const offset = (pageNum - 1) * limitNum;
+    const sortOrder = sort === 'asc' ? { ascending: true } : { ascending: false };
     
     // Build query untuk count total
     let countQuery = supabase
@@ -450,7 +451,7 @@ app.get('/api/transactions', async (req, res) => {
       return res.status(500).json({ success: false, message: 'Gagal mengambil data' });
     }
     
-    // Build query untuk data
+    // Build query untuk data dengan SORT dari parameter
     let dataQuery = supabase
       .from('transactions')
       .select('*')
@@ -469,8 +470,8 @@ app.get('/api/transactions', async (req, res) => {
       dataQuery = dataQuery.lte('date', endDate);
     }
     
-    // Order by date descending
-    dataQuery = dataQuery.order('date', { ascending: false });
+    // ORDER BY date sesuai parameter sort (default: descending / terbaru)
+    dataQuery = dataQuery.order('date', sortOrder);
     
     // Pagination
     dataQuery = dataQuery.range(offset, offset + limitNum - 1);
