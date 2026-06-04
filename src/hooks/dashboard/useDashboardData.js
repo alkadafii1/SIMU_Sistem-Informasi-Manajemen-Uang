@@ -8,14 +8,17 @@ export const useDashboardData = (navigate) => {
   const [dailyBudget, setDailyBudget] = useState(0);
   const [weeklyExpenses, setWeeklyExpenses] = useState([0, 0, 0, 0, 0, 0, 0]);
   
-  const fetchInProgress = useRef(false);
+  const isMountedRef = useRef(true);
+  const isFetchingRef = useRef(false);
 
-  // Gunakan useCallback agar fungsi stabil
   const fetchData = useCallback(async () => {
-    // Cegah multiple fetch bersamaan
-    if (fetchInProgress.current) return;
+    if (isFetchingRef.current) {
+      console.log('⏭️ Fetch already in progress, skipping...');
+      return null;
+    }
     
-    fetchInProgress.current = true;
+    isFetchingRef.current = true;
+    console.log('🟡 [useDashboardData] Fetching dashboard data...');
     setLoading(true);
     
     try {
@@ -24,56 +27,98 @@ export const useDashboardData = (navigate) => {
         api.get('/transactions'),
       ]);
       
+      if (!isMountedRef.current) return null;
+      
       const userSetup = setupRes.data.setup;
-      setSetup(userSetup);
       const allTransactions = transRes.data.transactions || [];
+      
+      console.log(`📊 [useDashboardData] Got ${allTransactions.length} transactions`);
+      
+      setSetup(userSetup);
+      setTransactions([...allTransactions]);
 
+      // Hitung total income (tanpa Tarik dari Tabungan)
       const totalIncomeAmount = allTransactions
-        .filter((t) => t.type === 'income')
+        .filter((t) => t.type === 'income' && t.category !== 'Tarik dari Tabungan')
         .reduce((sum, t) => sum + t.amount, 0);
+      
+      // Hitung total expense (tanpa Transfer ke Tabungan)
       const totalExpenseAmount = allTransactions
-        .filter((t) => t.type === 'expense')
+        .filter((t) => t.type === 'expense' && t.category !== 'Transfer ke Tabungan')
         .reduce((sum, t) => sum + t.amount, 0);
+      
+      // Hitung transfer ke tabungan
+      const savingsTransfers = allTransactions
+        .filter((t) => t.category === 'Transfer ke Tabungan')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      // Hitung tarik dari tabungan
+      const savingsWithdraws = allTransactions
+        .filter((t) => t.category === 'Tarik dari Tabungan')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      // Hitung Saldo Aktif
+      const activeBalance = (userSetup.income + totalIncomeAmount + savingsWithdraws) - (totalExpenseAmount + savingsTransfers);
+      
+      // ========== PERHITUNGAN DAILY BUDGET YANG BENAR ==========
+      const today = new Date();
+      const currentDate = today.getDate();
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const daysLeft = daysInMonth - currentDate;
+      
+      // Daily budget = sisa saldo aktif / sisa hari di bulan ini
+      const dailyBudgetCalc = daysLeft > 0 && activeBalance > 0 ? activeBalance / daysLeft : 0;
+      
+      console.log(`📅 Tanggal: ${currentDate}, Total hari bulan ini: ${daysInMonth}, Sisa hari: ${daysLeft}`);
+      console.log(`💰 Saldo Aktif: ${activeBalance}, Daily Budget: ${dailyBudgetCalc}`);
+      
+      setDailyBudget(dailyBudgetCalc);
 
-      setTransactions(allTransactions);
-
-      const income = userSetup.income;
-      const remaining = (income + totalIncomeAmount) - totalExpenseAmount;
-      const daysLeft = 30 - new Date().getDate();
-      setDailyBudget(daysLeft > 0 ? remaining / daysLeft : remaining);
-
-      // Hitung weekly expenses
+      // Weekly expenses
       const now = new Date();
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - now.getDay());
       const weekExp = [0, 0, 0, 0, 0, 0, 0];
       allTransactions.forEach((tx) => {
-        if (tx.type === 'expense') {
+        if (tx.type === 'expense' && tx.category !== 'Transfer ke Tabungan') {
           const txDate = new Date(tx.date);
           if (txDate >= startOfWeek && txDate <= now) {
             weekExp[txDate.getDay()] += tx.amount;
           }
         }
       });
-      setWeeklyExpenses(weekExp);
+      setWeeklyExpenses([...weekExp]);
 
+      console.log('✅ [useDashboardData] Fetch completed');
       return { userSetup, allTransactions };
 
     } catch (error) {
-      console.error('Gagal fetch dashboard:', error);
-      if (error.response?.status === 404) {
+      console.error('❌ [useDashboardData] Fetch error:', error);
+      if (error.response?.status === 404 && isMountedRef.current) {
         navigate('/setup-financial');
       }
-      throw error;
+      return null;
     } finally {
-      setLoading(false);
-      fetchInProgress.current = false;
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+      isFetchingRef.current = false;
     }
   }, [navigate]);
 
-  // Fetch pertama kali
+  const refetchData = useCallback(async () => {
+    console.log('🔄 [useDashboardData] Manual refetch triggered');
+    isFetchingRef.current = false;
+    return await fetchData();
+  }, [fetchData]);
+
   useEffect(() => {
+    isMountedRef.current = true;
     fetchData();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [fetchData]);
 
   return {
@@ -82,6 +127,6 @@ export const useDashboardData = (navigate) => {
     loading,
     dailyBudget,
     weeklyExpenses,
-    refetch: fetchData
+    refetchData
   };
 };
