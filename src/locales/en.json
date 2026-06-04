@@ -43,6 +43,7 @@
   "needs": "Needs",
   "wants": "Wants",
   "savingsLabel": "Savings",
+  "available": "available",
   
   "topExpenseCategories": "Top Expense Categories",
   "recordTransaction": "Record Transaction",

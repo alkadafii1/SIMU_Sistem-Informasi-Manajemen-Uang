@@ -43,6 +43,7 @@
   "needs": "Kebutuhan",
   "wants": "Keinginan",
   "savingsLabel": "Tabungan",
+  "available": "tersedia",
   
   "topExpenseCategories": "Kategori Pengeluaran Terbesar",
   "recordTransaction": "Catat Transaksi",

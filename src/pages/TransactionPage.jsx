@@ -473,12 +473,7 @@ const saveTransaction = async (numericAmount, finalCategory, finalType, finalDes
       setSelectedWithdrawGoalId(null);
       
       setTimeout(() => {
-        navigate('/dashboard', { 
-          state: { 
-            refresh: Date.now(),
-            message: 'Transaksi berhasil disimpan!' 
-          } 
-        });
+        window.location.href = '/dashboard';
       }, 1500);
     }
   } catch (error) {
