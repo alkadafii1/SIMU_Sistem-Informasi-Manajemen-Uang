@@ -7,7 +7,7 @@ import api from '../services/api';
 import { formatRupiah } from '../utils/format';
 import { GOALS_OPTIONS } from '../constants/setupData';
 
-// Dafter Kategori
+// Daftar Kategori
 const ORIGINAL_EXPENSE_CATEGORIES = [
   { name: 'Makanan & Minuman', type: 'need' },
   { name: 'Belanja Harian', type: 'need' },
@@ -98,17 +98,7 @@ function TransactionPage() {
     isLoading: true
   });
 
-  useEffect(() => {
-    const openTransferMode = location.state?.openTransferMode;
-    if (openTransferMode) {
-      setCategory('Transfer ke Tabungan');
-      setTransactionType('expense');
-      setAmountString('');
-      setShowCustomInput(false);
-      setSelectedWithdrawGoalId(null);
-    }
-  }, [location]);
-
+  // ========== DEPENDENCY FIX: Hanya mount sekali ==========
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
@@ -117,16 +107,56 @@ function TransactionPage() {
       email: storedEmail || 'email@example.com'
     });
     fetchAllData();
-  }, []);
+  }, []); // ✅ Empty array = hanya sekali saat mount
+
+  // ========== DEPENDENCY FIX: Transfer mode tidak perlu fetch ulang ==========
+  useEffect(() => {
+    const openTransferMode = location.state?.openTransferMode;
+    if (openTransferMode) {
+      setCategory('Transfer ke Tabungan');
+      setTransactionType('expense');
+      setAmountString('');
+      setShowCustomInput(false);
+      setSelectedWithdrawGoalId(null);
+      // ✅ HAPUS fetchAllData() - tidak perlu fetch ulang
+    }
+  }, [location.state?.openTransferMode]); // ✅ Dependency spesifik
+
+  // ========== DEPENDENCY FIX: Cek auth dan setup hanya sekali ==========
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    const checkSetup = async () => {
+      try {
+        await api.get('/user/setup');
+      } catch (error) {
+        if (error.response?.status === 404) {
+          navigate('/setup-financial');
+        } else if (error.response?.status === 401) {
+          localStorage.clear();
+          navigate('/login');
+        }
+      }
+    };
+    checkSetup();
+  }, [navigate]); // ✅ Dependency hanya navigate
 
   const fetchAllData = async () => {
     console.log('🔄 [DEBUG] fetchAllData called');
-    await Promise.all([
-      fetchFinancialData(),
-      fetchUserGoals(),
-      fetchSavingsByGoal()
-    ]);
-    console.log('✅ [DEBUG] fetchAllData completed');
+    try {
+      await Promise.all([
+        fetchFinancialData(),
+        fetchUserGoals(),
+        fetchSavingsByGoal()
+      ]);
+      console.log('✅ [DEBUG] fetchAllData completed');
+    } catch (error) {
+      console.error('❌ [DEBUG] fetchAllData error:', error);
+    }
   };
 
   const fetchUserGoals = async () => {
@@ -243,28 +273,6 @@ function TransactionPage() {
       setFinancialData(prev => ({ ...prev, isLoading: false }));
     }
   };
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
-
-    const checkSetup = async () => {
-      try {
-        await api.get('/user/setup');
-      } catch (error) {
-        if (error.response?.status === 404) {
-          navigate('/setup-financial');
-        } else if (error.response?.status === 401) {
-          localStorage.clear();
-          navigate('/login');
-        }
-      }
-    };
-    checkSetup();
-  }, [navigate]);
 
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
@@ -451,34 +459,43 @@ function TransactionPage() {
     await saveTransaction(numericAmount, finalCategory, finalType, finalDescription);
   };
 
-const saveTransaction = async (numericAmount, finalCategory, finalType, finalDescription) => {
-  setLoading(true);
-  try {
-    const response = await api.post('/transactions', {
-      type: finalType,
-      amount: numericAmount,
-      category: finalCategory,
-      description: finalDescription,
-      date: new Date().toISOString().split('T')[0]
-    });
-    
-    if (response.data.success) {
-      showToast('Transaksi berhasil disimpan!', 'success');
-      await fetchAllData();
+  const saveTransaction = async (numericAmount, finalCategory, finalType, finalDescription) => {
+    setLoading(true);
+    try {
+      console.log('📤 SAVING TRANSACTION:', {
+        type: finalType,
+        amount: numericAmount,
+        category: finalCategory,
+        description: finalDescription
+      });
       
-      // LANGSUNG RELOAD PAGE - PASTI BERHASIL
-      setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 1500);
+      const response = await api.post('/transactions', {
+        type: finalType,
+        amount: numericAmount,
+        category: finalCategory,
+        description: finalDescription,
+        date: new Date().toISOString().split('T')[0]
+      });
+      
+      console.log('📥 RESPONSE:', response.data);
+      
+      if (response.data.success) {
+        showToast('Transaksi berhasil disimpan!', 'success');
+        await fetchAllData();
+        
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('❌ Error saving transaction:', error);
+      console.error('Response error data:', error.response?.data);
+      showToast(error.response?.data?.message || 'Terjadi kesalahan', 'error');
+    } finally {
+      setLoading(false);
+      setShowConfirmDialog(false);
     }
-  } catch (error) {
-    console.error('Error saving transaction:', error);
-    showToast('Terjadi kesalahan', 'error');
-  } finally {
-    setLoading(false);
-    setShowConfirmDialog(false);
-  }
-};
+  };
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
   
@@ -530,7 +547,6 @@ const saveTransaction = async (numericAmount, finalCategory, finalType, finalDes
     return savingsByGoal[selectedWithdrawGoalId] || 0;
   };
 
-  // dark mode untuk state aktif
   const getActiveCategoryStyle = () => {
     if (isTransferMode) return 'bg-emerald-600 text-white shadow-md';
     if (transactionType === 'expense') return 'bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700';
@@ -825,7 +841,6 @@ const saveTransaction = async (numericAmount, finalCategory, finalType, finalDes
                       />
                     )}
                     
-                    {/* Kategori */}
                     {!isTransferMode && transactionType === 'expense' && (
                       <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                         <p className={`text-[10px] mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>📌 Keterangan:</p>
