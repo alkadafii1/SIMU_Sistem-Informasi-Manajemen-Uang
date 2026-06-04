@@ -27,7 +27,7 @@ function Dashboard() {
   const navigate = useNavigate();
   
   // Custom hooks
-  const { setup, transactions, loading, dailyBudget, weeklyExpenses } = useDashboardData(navigate);
+  const { setup, transactions, loading, dailyBudget, weeklyExpenses, refetchData } = useDashboardData(navigate);
   const { prediction: aiPrediction, loading: aiLoading, error: aiError, fetchPrediction, refreshPrediction } = useAIPrediction();
   const { showPopup: showWelcomePopup, progress: popupProgress, closePopup } = usePopup(location);
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
@@ -44,6 +44,16 @@ function Dashboard() {
   };
   const userAvatar = localStorage.getItem('user_avatar');
   const userInitial = userData.name.charAt(0).toUpperCase();
+
+  // Refresh data ketika ada state refresh dari halaman lain (transaksi)
+  useEffect(() => {
+    if (location.state?.refresh) {
+      // Refresh data dashboard
+      refetchData();
+      // Hapus state agar tidak refresh terus
+      navigate('/dashboard', { replace: true, state: {} });
+    }
+  }, [location.state, navigate, refetchData]);
 
   // Fetch AI prediction only once when setup is ready
   useEffect(() => {

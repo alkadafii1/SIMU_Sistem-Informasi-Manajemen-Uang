@@ -449,51 +449,59 @@ function TransactionPage() {
     await saveTransaction(numericAmount, finalCategory, finalType, finalDescription);
   };
 
-  const saveTransaction = async (numericAmount, finalCategory, finalType, finalDescription) => {
-    setLoading(true);
-    try {
-      const response = await api.post('/transactions', {
-        type: finalType,
-        amount: numericAmount,
-        category: finalCategory,
-        description: finalDescription,
-        date: new Date().toISOString().split('T')[0]
-      });
+const saveTransaction = async (numericAmount, finalCategory, finalType, finalDescription) => {
+  setLoading(true);
+  try {
+    const response = await api.post('/transactions', {
+      type: finalType,
+      amount: numericAmount,
+      category: finalCategory,
+      description: finalDescription,
+      date: new Date().toISOString().split('T')[0]
+    });
+    
+    if (response.data.success) {
+      showToast('Transaksi berhasil disimpan!', 'success');
+      await fetchAllData();
+      setAmountString('');
+      setNote('');
+      setCustomCategory('');
+      setShowCustomInput(false);
+      setCategory(ORIGINAL_EXPENSE_CATEGORIES[0].name);
+      setTransactionType('expense');
+      setSelectedGoalId(null);
+      setSelectedWithdrawGoalId(null);
       
-      if (response.data.success) {
-        showToast('Transaksi berhasil disimpan!', 'success');
-        await fetchAllData();
-        setAmountString('');
-        setNote('');
-        setCustomCategory('');
-        setShowCustomInput(false);
-        setCategory(ORIGINAL_EXPENSE_CATEGORIES[0].name);
-        setTransactionType('expense');
-        setSelectedGoalId(null);
-        setSelectedWithdrawGoalId(null);
-        setTimeout(() => navigate('/dashboard'), 1500);
-      }
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      let message = 'Terjadi kesalahan';
-      if (error.response?.data?.message) {
-        message = error.response.data.message;
-        if (message.includes('Saldo tidak cukup') || message.includes('Sisa budget')) {
-          await fetchAllData();
-        } else if (message.toLowerCase().includes('setup')) {
-          message = 'Anda belum melakukan pengaturan keuangan. Silakan isi pendapatan terlebih dahulu.';
-          setTimeout(() => navigate('/setup-financial'), 2000);
-        } else if (message.toLowerCase().includes('token') || message.toLowerCase().includes('unauthorized')) {
-          message = 'Sesi Anda habis, silakan login kembali';
-          setTimeout(() => { localStorage.clear(); navigate('/login'); }, 2000);
-        }
-      }
-      showToast(message, 'error');
-    } finally {
-      setLoading(false);
-      setShowConfirmDialog(false);
+      setTimeout(() => {
+        navigate('/dashboard', { 
+          state: { 
+            refresh: Date.now(),
+            message: 'Transaksi berhasil disimpan!' 
+          } 
+        });
+      }, 1500);
     }
-  };
+  } catch (error) {
+    console.error('Error saving transaction:', error);
+    let message = 'Terjadi kesalahan';
+    if (error.response?.data?.message) {
+      message = error.response.data.message;
+      if (message.includes('Saldo tidak cukup') || message.includes('Sisa budget')) {
+        await fetchAllData();
+      } else if (message.toLowerCase().includes('setup')) {
+        message = 'Anda belum melakukan pengaturan keuangan. Silakan isi pendapatan terlebih dahulu.';
+        setTimeout(() => navigate('/setup-financial'), 2000);
+      } else if (message.toLowerCase().includes('token') || message.toLowerCase().includes('unauthorized')) {
+        message = 'Sesi Anda habis, silakan login kembali';
+        setTimeout(() => { localStorage.clear(); navigate('/login'); }, 2000);
+      }
+    }
+    showToast(message, 'error');
+  } finally {
+    setLoading(false);
+    setShowConfirmDialog(false);
+  }
+};
 
   const userInitial = userData.name ? userData.name.charAt(0).toUpperCase() : 'U';
   

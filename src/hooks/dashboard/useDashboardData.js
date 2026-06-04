@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../../services/api';
 
 export const useDashboardData = (navigate) => {
@@ -9,12 +9,14 @@ export const useDashboardData = (navigate) => {
   const [weeklyExpenses, setWeeklyExpenses] = useState([0, 0, 0, 0, 0, 0, 0]);
   
   const fetchInProgress = useRef(false);
-  const initialFetchDone = useRef(false);
 
-  const fetchData = async () => {
-    if (initialFetchDone.current || fetchInProgress.current) return;
+  // Gunakan useCallback agar fungsi stabil
+  const fetchData = useCallback(async () => {
+    // Cegah multiple fetch bersamaan
+    if (fetchInProgress.current) return;
     
     fetchInProgress.current = true;
+    setLoading(true);
     
     try {
       const [setupRes, transRes] = await Promise.all([
@@ -55,7 +57,6 @@ export const useDashboardData = (navigate) => {
       });
       setWeeklyExpenses(weekExp);
 
-      initialFetchDone.current = true;
       return { userSetup, allTransactions };
 
     } catch (error) {
@@ -68,11 +69,12 @@ export const useDashboardData = (navigate) => {
       setLoading(false);
       fetchInProgress.current = false;
     }
-  };
+  }, [navigate]);
 
+  // Fetch pertama kali
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   return {
     setup,
