@@ -25,9 +25,6 @@ const AllocationChart = ({
     <div className={`${cardBg} rounded-lg border ${borderColor} shadow-sm p-5`}>
       <div className="flex justify-between items-center mb-4">
         <h3 className={`text-sm font-semibold ${textPrimary}`}>{t('budgetAllocation')}</h3>
-        <button onClick={onNavigate} className="text-xs text-[#00685f] hover:text-[#005049] font-medium">
-          {t('reset')}
-        </button>
       </div>
 
       <div className="flex flex-col items-center">

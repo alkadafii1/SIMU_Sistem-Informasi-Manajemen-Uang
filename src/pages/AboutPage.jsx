@@ -175,23 +175,6 @@ function AboutPage() {
                 </div>
               </div>
 
-              {/* Tech Stack Section */}
-              <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm p-6 mb-6`}>
-                <h3 className={`text-base font-bold ${textPrimary} mb-4 flex items-center gap-2`}>
-                  <span className="material-symbols-outlined text-[#00685f]">developer_mode</span>
-                  Teknologi yang Digunakan
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {['React', 'Vite', 'Tailwind CSS', 'Express.js', 'Node.js', 'Supabase', 'TensorFlow', 'Gemini AI'].map((tech, idx) => (
-                    <span key={idx} className={`text-xs px-3 py-1.5 rounded-full ${
-                      isDarkMode ? 'bg-gray-800 text-gray-300 border border-gray-700' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
               {/* Contact Section */}
               <div className={`${cardBg} rounded-xl border ${borderColor} shadow-sm p-6 mb-6`}>
                 <h3 className={`text-base font-bold ${textPrimary} mb-4 flex items-center gap-2`}>

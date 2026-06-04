@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { GOALS_OPTIONS } from '../constants/setupData';
 import api from '../services/api';
 import Sidebar from '../components/Sidebar';
+import Spinner from '../components/Spinner';
 
 function GoalsSetting() {
   const navigate = useNavigate();
@@ -102,11 +103,7 @@ function GoalsSetting() {
   };
 
   if (loading) {
-    return (
-      <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00685f]"></div>
-      </div>
-    );
+    return <Spinner fullScreen text="Memuat target tabungan..." />;
   }
 
   return (
@@ -239,8 +236,7 @@ function GoalsSetting() {
                 >
                   {saving ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      Menyimpan...
+                      <Spinner size="sm" text="Menyimpan..." />
                     </div>
                   ) : (
                     'Simpan Target Tabungan'

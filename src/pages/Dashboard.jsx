@@ -11,6 +11,7 @@ import { getStatusColor, getStatusIcon, getStatusText } from '../utils/dashboard
 import { NEEDS_CATEGORIES, WANTS_CATEGORIES, WEEK_DAYS } from '../constants/categories';
 import useOnlineStatus from '../hooks/dashboard/useOnlineStatus';
 import GoalsCard from '../components/Dashboard/GoalsCard';
+import Spinner from '../components/Spinner';
 
 // Import components
 import Sidebar from '../components/Sidebar';
@@ -54,11 +55,7 @@ function Dashboard() {
   }, [setup?.income, aiPrediction, aiLoading, fetchPrediction, transactions]);
 
   if (loading) {
-    return (
-      <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00685f]"></div>
-      </div>
-    );
+    return <Spinner fullScreen text="Memuat dashboard..." />;
   }
 
   if (!setup) return null;

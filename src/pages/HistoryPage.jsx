@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import { useThemeStyles } from '../hooks/useThemeStyles';
 import api from '../services/api';
 import { formatRupiah } from '../utils/format';
+import Spinner from '../components/Spinner';
 
 function HistoryPage() {
   const navigate = useNavigate();
@@ -219,14 +220,7 @@ function HistoryPage() {
   };
 
   if (loading && transactions.length === 0) {
-    return (
-      <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00685f] mx-auto mb-4"></div>
-          <p className={textSecondary}>Memuat...</p>
-        </div>
-      </div>
-    );
+    return <Spinner fullScreen text="Memuat riwayat transaksi..." />;
   }
 
   return (
@@ -473,7 +467,7 @@ function HistoryPage() {
                       <button onClick={() => navigate('/transaction')} className="mt-3 text-xs text-[#00685f] font-medium hover:underline">+ Catat transaksi pertama</button>
                     </div>
                   ) : (
-                    <div className="divide-y ${borderColor}">
+                    <div className={`divide-y ${borderColor}`}>
                       {transactions.map((transaction, index) => (
                         <div key={`${transaction.id}_${transaction.createdAt}_mobile`} className={`p-4 border-b ${borderColor}`}>
                           <div className="flex justify-between items-start mb-3">
@@ -528,8 +522,7 @@ function HistoryPage() {
                     >
                       {loadingMore ? (
                         <span className="flex items-center gap-2 justify-center">
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#00685f] border-t-transparent"></div>
-                          Memuat...
+                          <Spinner size="xs" text="Memuat..." />
                         </span>
                       ) : (
                         'Muat Lebih Banyak'

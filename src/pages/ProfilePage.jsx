@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useThemeStyles } from '../hooks/useThemeStyles';
 import { useLanguage } from '../context/LanguageContext';
 import Sidebar from '../components/Sidebar';
+import Spinner from '../components/Spinner';
 import api from '../services/api';
 
 function ProfilePage() {
@@ -161,11 +162,7 @@ function ProfilePage() {
   };
 
   if (loading) {
-    return (
-      <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00685f]"></div>
-      </div>
-    );
+    return <Spinner fullScreen text="Memuat profil..." />;
   }
 
   return (
@@ -371,8 +368,7 @@ function ProfilePage() {
                   >
                     {saving ? (
                       <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                        Menyimpan...
+                        <LoadingSpinner size="sm" text="Menyimpan..." />
                       </div>
                     ) : (
                       'Simpan Perubahan'
