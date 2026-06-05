@@ -160,7 +160,7 @@ function GoalsSetting() {
                 <div>
                   <p className="font-semibold text-sm mb-1">💡 Cara Menabung untuk Target:</p>
                   <p className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                    Buka halaman <strong>Catat Transaksi</strong> → Pilih <strong>Transfer</strong> → Pilih <strong>Transfer ke Tabungan</strong> → Masukkan nominal → Simpan. Progress akan otomatis terhitung!
+                    Buka halaman <strong>Catat Transaksi</strong> → Pilih <strong>Transfer</strong> → Pilih <strong>Transfer ke Tabungan</strong> → Pilih target → Masukkan nominal → Simpan. Progress akan otomatis terhitung!
                   </p>
                 </div>
               </div>
@@ -236,7 +236,8 @@ function GoalsSetting() {
                 >
                   {saving ? (
                     <div className="flex items-center justify-center gap-2">
-                      <Spinner size="sm" text="Menyimpan..." />
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyimpan...</span>
                     </div>
                   ) : (
                     'Simpan Target Tabungan'

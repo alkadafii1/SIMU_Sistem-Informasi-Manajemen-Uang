@@ -33,6 +33,14 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error(`[API Error] ${error.config?.url}`, error.message);
+    
+    // Handle 401 Unauthorized - token expired atau invalid
+    if (error.response?.status === 401) {
+      console.log('Token expired or invalid, redirecting to login...');
+      localStorage.clear();
+      window.location.href = '/login';
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -54,6 +62,17 @@ export const predictFinancialHealth = async (userId, monthlyIncome) => {
     return response.data;
   } catch (error) {
     console.error('AI Predict error:', error);
+    throw error;
+  }
+};
+
+// Savings Services
+export const getSavingsBalance = async () => {
+  try {
+    const response = await api.get('/savings/balance');
+    return response.data;
+  } catch (error) {
+    console.error('Get savings balance error:', error);
     throw error;
   }
 };

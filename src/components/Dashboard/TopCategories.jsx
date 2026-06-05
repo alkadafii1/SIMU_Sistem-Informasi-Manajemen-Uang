@@ -1,17 +1,19 @@
 import React from 'react';
 
-const TopCategories = ({ transactions, totalExpense, formatRupiah, onNavigate, cardBg, borderColor, textPrimary, textSecondary, t, tc }) => {
-  // Group expense by category
-  const expenseByCategory = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((acc, t) => {
-      acc[t.category] = (acc[t.category] || 0) + t.amount;
-      return acc;
-    }, {});
-  
-  const topCategories = Object.entries(expenseByCategory)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+const TopCategories = ({ 
+  categoryTotals = [],  // ← GANTI: terima categoryTotals dari props
+  totalExpense, 
+  formatRupiah, 
+  onNavigate, 
+  cardBg, 
+  borderColor, 
+  textPrimary, 
+  textSecondary, 
+  t, 
+  tc 
+}) => {
+  // Ambil 3 kategori terbesar dari categoryTotals yang sudah diurutkan backend
+  const topCategories = categoryTotals.slice(0, 3);
   
   const categoryColors = ['#00685f', '#66b5ad', '#b3d9d5'];
 
@@ -40,19 +42,19 @@ const TopCategories = ({ transactions, totalExpense, formatRupiah, onNavigate, c
         </div>
       ) : (
         <div className="space-y-3">
-          {topCategories.map(([category, amount], idx) => {
-            const percent = totalExpense > 0 ? (amount / totalExpense) * 100 : 0;
+          {topCategories.map((cat, idx) => {
+            const percent = totalExpense > 0 ? (cat.amount / totalExpense) * 100 : 0;
             // Translate category name using tc function
-            const translatedCategory = tc(category, 'expense');
+            const translatedCategory = tc(cat.name, 'expense');
             return (
-              <div key={category}>
+              <div key={cat.name}>
                 <div className="flex justify-between text-xs font-semibold mb-1">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: categoryColors[idx % categoryColors.length] }}></span>
                     <span className={textPrimary}>{translatedCategory}</span>
                   </div>
                   <span className={`text-xs font-bold ${textPrimary}`}>
-                    {formatRupiah(amount)} ({Math.round(percent)}%)
+                    {formatRupiah(cat.amount)} ({Math.round(percent)}%)
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">

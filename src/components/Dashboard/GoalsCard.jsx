@@ -71,7 +71,9 @@ const GoalsCard = ({
     return { valid: true, message: '' };
   };
 
-  const handleAllocateToGoal = async () => {
+  // Alokasi ke Target menggunakan endpoint baru
+const handleAllocateToGoal = async () => {
+  console.log('DEBUG:', { selectedAllocationGoal, allocationAmount, parsed: parseInt(allocationAmount, 10) });
     if (!selectedAllocationGoal) {
       showToastMsg('Pilih target terlebih dahulu!', 'error');
       return;
@@ -89,12 +91,11 @@ const GoalsCard = ({
       const selectedGoal = GOALS_OPTIONS.find(g => g.id === selectedAllocationGoal);
       const goalLabel = selectedGoal?.label || selectedAllocationGoal;
       
-      const response = await api.post('/transactions', {
-        type: 'expense',
+      // Endpoint
+      const response = await api.post('/savings/allocate-to-goal', {
+        goalId: selectedAllocationGoal,
         amount: amount,
-        category: 'Transfer ke Tabungan',
-        description: `Alokasi dari Tabungan Umum ke ${goalLabel}`,
-        date: new Date().toISOString().split('T')[0]
+        goalLabel: goalLabel
       });
       
       if (response.data.success) {
@@ -108,7 +109,7 @@ const GoalsCard = ({
           await onTransactionSuccess();
         }
       } else {
-        showToastMsg('Gagal mengalokasikan dana', 'error');
+        showToastMsg(response.data.message || 'Gagal mengalokasikan dana', 'error');
       }
     } catch (error) {
       console.error('Error allocating:', error);
@@ -118,6 +119,7 @@ const GoalsCard = ({
     }
   };
   
+  // Tarik dari Tabungan Umum menggunakan endpoint baru
   const handleWithdrawFromGeneral = async () => {
     const amount = parseInt(allocationAmount, 10);
     const validation = validateAllocationAmount(amount, unallocatedSavings);
@@ -130,11 +132,9 @@ const GoalsCard = ({
     try {
       console.log('💰 Withdrawing from general savings:', amount);
       
-      const response = await api.post('/transactions', {
-        type: 'income',
+      // Endpoint
+      const response = await api.post('/savings/withdraw', {
         amount: amount,
-        category: 'Tarik dari Tabungan',
-        description: `WITHDRAW_GENERAL`,
         date: new Date().toISOString().split('T')[0]
       });
       
@@ -152,7 +152,7 @@ const GoalsCard = ({
           console.log('✅ onTransactionSuccess completed');
         }
       } else {
-        showToastMsg('Gagal menarik dana', 'error');
+        showToastMsg(response.data.message || 'Gagal menarik dana', 'error');
       }
     } catch (error) {
       console.error('Error withdrawing:', error);
@@ -377,50 +377,52 @@ const GoalsCard = ({
             </div>
           ))}
           
-          {/* Tabungan Umum */}
-          <div className={`p-3 rounded-xl ${getGeneralSavingsBg()}`}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-amber-800' : 'bg-amber-100'}`}>
-                <span className={`material-symbols-outlined ${isDarkMode ? 'text-amber-300' : 'text-amber-600'}`}>savings</span>
+          {/* TABUNGAN UMUM - HANYA TAMPIL JIKA SALDO > 0 */}
+          {unallocatedSavings > 0 && (
+            <div className={`p-3 rounded-xl ${getGeneralSavingsBg()}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-amber-800' : 'bg-amber-100'}`}>
+                  <span className={`material-symbols-outlined ${isDarkMode ? 'text-amber-300' : 'text-amber-600'}`}>savings</span>
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-bold ${getTextPrimary()}`}>{t('generalSavings')}</p>
+                  <p className={`text-[10px] ${getTextSecondary()}`}>{t('unallocated')}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-lg font-black ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>{formatRupiah(unallocatedSavings)}</p>
+                  <p className={`text-[9px] ${getTextSecondary()}`}>{t('available') || 'tersedia'}</p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className={`text-sm font-bold ${getTextPrimary()}`}>{t('generalSavings')}</p>
-                <p className={`text-[10px] ${getTextSecondary()}`}>{t('unallocated')}</p>
-              </div>
-              <div className="text-right">
-                <p className={`text-lg font-black ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>{formatRupiah(unallocatedSavings)}</p>
-                <p className={`text-[9px] ${getTextSecondary()}`}>{t('available') || 'tersedia'}</p>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setAllocationType('to_goal');
+                    setSelectedAllocationGoal(null);
+                    setAllocationAmount('');
+                    setDisplayAmount('');
+                    setShowAllocationModal(true);
+                  }}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">assignment</span>
+                  {t('allocateToGoal')}
+                </button>
+                <button
+                  onClick={() => {
+                    setAllocationType('withdraw');
+                    setAllocationAmount('');
+                    setDisplayAmount('');
+                    setShowAllocationModal(true);
+                  }}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-all flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">arrow_upward</span>
+                  {t('withdrawToActive')}
+                </button>
               </div>
             </div>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setAllocationType('to_goal');
-                  setSelectedAllocationGoal(null);
-                  setAllocationAmount('');
-                  setDisplayAmount('');
-                  setShowAllocationModal(true);
-                }}
-                className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center justify-center gap-1"
-              >
-                <span className="material-symbols-outlined text-sm">assignment</span>
-                {t('allocateToGoal')}
-              </button>
-              <button
-                onClick={() => {
-                  setAllocationType('withdraw');
-                  setAllocationAmount('');
-                  setDisplayAmount('');
-                  setShowAllocationModal(true);
-                }}
-                className="flex-1 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-all flex items-center justify-center gap-1"
-              >
-                <span className="material-symbols-outlined text-sm">arrow_upward</span>
-                {t('withdrawToActive')}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
         
         {/* Atur Target & Transfer ke Tabungan */}

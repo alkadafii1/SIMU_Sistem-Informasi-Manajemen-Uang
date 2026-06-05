@@ -39,7 +39,6 @@ const ORIGINAL_TRANSFER_CATEGORIES = [
   'Tarik dari Tabungan'
 ];
 
-// dark mode support untuk badge
 const getCategoryBadgeStyle = (type) => {
   switch (type) {
     case 'need':
@@ -85,8 +84,7 @@ function TransactionPage() {
   const [userGoals, setUserGoals] = useState([]);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
   const [selectedWithdrawGoalId, setSelectedWithdrawGoalId] = useState(null);
-  const [savingsByGoal, setSavingsByGoal] = useState({});
-  const [isLoadingSavings, setIsLoadingSavings] = useState(false);
+  const [savingsData, setSavingsData] = useState({ generalBalance: 0, goals: [] });
   
   const [financialData, setFinancialData] = useState({
     income: 0,
@@ -94,11 +92,15 @@ function TransactionPage() {
     totalExpense: 0,
     activeBalance: 0,
     savingsBalance: 0,
-    remaining: 0,
     isLoading: true
   });
 
-  // ========== DEPENDENCY FIX: Hanya mount sekali ==========
+  const getCategoryBadge = (categoryName) => {
+    const categoryInfo = ORIGINAL_EXPENSE_CATEGORIES.find(cat => cat.name === categoryName);
+    return getCategoryBadgeStyle(categoryInfo?.type || 'other');
+  };
+
+  // Initial Fetch
   useEffect(() => {
     const storedName = localStorage.getItem('user_name');
     const storedEmail = localStorage.getItem('user_email');
@@ -107,9 +109,9 @@ function TransactionPage() {
       email: storedEmail || 'email@example.com'
     });
     fetchAllData();
-  }, []); // ✅ Empty array = hanya sekali saat mount
+  }, []);
 
-  // ========== DEPENDENCY FIX: Transfer mode tidak perlu fetch ulang ==========
+  // Transfer Mode
   useEffect(() => {
     const openTransferMode = location.state?.openTransferMode;
     if (openTransferMode) {
@@ -118,32 +120,17 @@ function TransactionPage() {
       setAmountString('');
       setShowCustomInput(false);
       setSelectedWithdrawGoalId(null);
-      // ✅ HAPUS fetchAllData() - tidak perlu fetch ulang
     }
-  }, [location.state?.openTransferMode]); // ✅ Dependency spesifik
+  }, [location.state?.openTransferMode]);
 
-  // ========== DEPENDENCY FIX: Cek auth dan setup hanya sekali ==========
+  // Cek Auth
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
       navigate('/login');
       return;
     }
-
-    const checkSetup = async () => {
-      try {
-        await api.get('/user/setup');
-      } catch (error) {
-        if (error.response?.status === 404) {
-          navigate('/setup-financial');
-        } else if (error.response?.status === 401) {
-          localStorage.clear();
-          navigate('/login');
-        }
-      }
-    };
-    checkSetup();
-  }, [navigate]); // ✅ Dependency hanya navigate
+  }, [navigate]);
 
   const fetchAllData = async () => {
     console.log('🔄 [DEBUG] fetchAllData called');
@@ -151,7 +138,7 @@ function TransactionPage() {
       await Promise.all([
         fetchFinancialData(),
         fetchUserGoals(),
-        fetchSavingsByGoal()
+        fetchSavingsData()
       ]);
       console.log('✅ [DEBUG] fetchAllData completed');
     } catch (error) {
@@ -170,102 +157,54 @@ function TransactionPage() {
     }
   };
 
-  const fetchSavingsByGoal = async () => {
-    setIsLoadingSavings(true);
+  const fetchSavingsData = async () => {
     try {
-      const [goalsRes, transactionsRes] = await Promise.all([
-        api.get('/user/goals'),
-        api.get('/transactions')
-      ]);
-      
-      const userGoalsData = goalsRes.data.goals || [];
-      const transactions = transactionsRes.data.transactions || [];
-      const savings = {};
-      
-      userGoalsData.forEach(goal => {
-        if (goal.isSelected) {
-          savings[goal.id] = 0;
-        }
-      });
-      
-      transactions.forEach(tx => {
-        if (tx.category === 'Transfer ke Tabungan' || tx.category === 'Tarik dari Tabungan') {
-          const description = tx.description || '';
-          const amount = tx.amount;
-          
-          if (description.startsWith('WITHDRAW_GOAL:')) {
-            const parts = description.split(':');
-            const goalId = parts[1];
-            if (savings[goalId] !== undefined) {
-              savings[goalId] -= amount;
-            }
-          } else if (description.startsWith('TRANSFER_GOAL:')) {
-            const parts = description.split(':');
-            const goalId = parts[1];
-            if (savings[goalId] !== undefined) {
-              savings[goalId] += amount;
-            }
-          } else if (description.includes('Alokasi dari Tabungan Umum ke')) {
-            for (const goal of userGoalsData) {
-              if (goal.isSelected) {
-                const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
-                const goalLabel = goalInfo?.label || goal.id;
-                if (description.includes(goalLabel)) {
-                  savings[goal.id] = (savings[goal.id] || 0) + amount;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      });
-      
-      setSavingsByGoal(savings);
-      return savings;
+      const response = await api.get('/savings/balance');
+      if (response.data.success) {
+        setSavingsData({
+          generalBalance: response.data.generalBalance,
+          goals: response.data.goals || []
+        });
+      }
     } catch (error) {
-      console.error('Error fetching savings by goal:', error);
-      return {};
-    } finally {
-      setIsLoadingSavings(false);
+      console.error('Error fetching savings data:', error);
     }
   };
 
+  const getGoalSavings = (goalId) => {
+    const goal = savingsData.goals.find(g => g.goal_id === goalId);
+    return goal?.allocated_amount || 0;
+  };
+
+  // Endpoint
   const fetchFinancialData = async () => {
     try {
-      const [transactionsRes, setupRes] = await Promise.all([
-        api.get('/transactions'),
-        api.get('/user/setup')
+      const [setupRes, summaryRes] = await Promise.all([
+        api.get('/user/setup'),
+        api.get('/transactions/summary')
       ]);
 
-      const transactions = transactionsRes.data.transactions || [];
       const setup = setupRes.data.setup;
-      
-      const totalIncome = transactions
-        .filter(t => t.type === 'income' && t.category !== 'Tarik dari Tabungan')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const totalExpense = transactions
-        .filter(t => t.type === 'expense' && t.category !== 'Transfer ke Tabungan')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const savingsTransfers = transactions
-        .filter(t => t.category === 'Transfer ke Tabungan')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const savingsWithdraws = transactions
-        .filter(t => t.category === 'Tarik dari Tabungan')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const savingsBalance = savingsTransfers - savingsWithdraws;
-      const activeBalance = (setup.income + totalIncome + savingsWithdraws) - (totalExpense + savingsTransfers);
-      
+      const { totalIncome, totalExpense, savingsTransfers, savingsWithdraws } = summaryRes.data;
+
+      const initialIncome = setup?.income || 0;
+      const activeBalance = (initialIncome + totalIncome + savingsWithdraws) - (totalExpense + savingsTransfers);
+
+      console.log('📊 [TransactionPage FinancialData]', {
+        initialIncome,
+        totalIncome,
+        savingsWithdraws,
+        totalExpense,
+        savingsTransfers,
+        activeBalance
+      });
+
       setFinancialData({
-        income: setup.income,
+        income: initialIncome,
         totalIncome: totalIncome,
         totalExpense: totalExpense,
         activeBalance: activeBalance,
-        savingsBalance: savingsBalance,
-        remaining: activeBalance,
+        savingsBalance: savingsData.generalBalance,
         isLoading: false
       });
     } catch (error) {
@@ -274,29 +213,45 @@ function TransactionPage() {
     }
   };
 
+  // Update savingsBalance ketika savingsData berubah
+  useEffect(() => {
+    setFinancialData(prev => ({
+      ...prev,
+      savingsBalance: savingsData.generalBalance
+    }));
+  }, [savingsData.generalBalance]);
+
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4000);
   };
 
-  const validateBalance = async (amount) => {
-    if (category === 'Transfer ke Tabungan') {
-      if (amount > financialData.activeBalance) {
-        return { valid: false, message: `Saldo aktif tidak mencukupi! Sisa saldo aktif: ${formatRupiah(financialData.activeBalance)}` };
-      }
-    } else if (category === 'Tarik dari Tabungan') {
-      if (!selectedWithdrawGoalId) {
-        return { valid: false, message: 'Pilih target tabungan yang akan ditarik!' };
-      }
-      const goalSavings = savingsByGoal[selectedWithdrawGoalId] || 0;
-      if (amount > goalSavings) {
-        return { valid: false, message: `Saldo tabungan untuk target ini tidak mencukupi! Saldo saat ini: ${formatRupiah(goalSavings)}` };
-      }
-    } else if (transactionType === 'expense') {
+  const validateBalance = (amount) => {
+    if (transactionType === 'expense' && category !== 'Transfer ke Tabungan' && category !== 'Tarik dari Tabungan') {
       if (amount > financialData.activeBalance) {
         return { valid: false, message: `Saldo tidak mencukupi! Sisa saldo: ${formatRupiah(financialData.activeBalance)}` };
       }
     }
+    
+    if (category === 'Transfer ke Tabungan') {
+      if (amount > financialData.activeBalance) {
+        return { valid: false, message: `Saldo tidak mencukupi! Sisa saldo: ${formatRupiah(financialData.activeBalance)}` };
+      }
+    }
+    
+    if (category === 'Tarik dari Tabungan') {
+      if (selectedWithdrawGoalId) {
+        const goalSavings = getGoalSavings(selectedWithdrawGoalId);
+        if (amount > goalSavings) {
+          return { valid: false, message: `Saldo target tidak mencukupi! Tersedia: ${formatRupiah(goalSavings)}` };
+        }
+      } else {
+        if (amount > savingsData.generalBalance) {
+          return { valid: false, message: `Saldo Tabungan Umum tidak mencukupi! Tersedia: ${formatRupiah(savingsData.generalBalance)}` };
+        }
+      }
+    }
+    
     return { valid: true, message: '' };
   };
 
@@ -330,12 +285,6 @@ function TransactionPage() {
   };
 
   const getExpenseCategoryNames = () => ORIGINAL_EXPENSE_CATEGORIES.map(cat => cat.name);
-
-  const getCategoryBadge = (categoryName) => {
-    const categoryInfo = ORIGINAL_EXPENSE_CATEGORIES.find(cat => cat.name === categoryName);
-    return getCategoryBadgeStyle(categoryInfo?.type || 'other');
-  };
-
   const getIncomeCategories = () => ORIGINAL_INCOME_CATEGORIES;
   const getTransferCategories = () => ORIGINAL_TRANSFER_CATEGORIES;
 
@@ -373,7 +322,7 @@ function TransactionPage() {
     } else {
       setCategory('Tarik dari Tabungan');
       setSelectedGoalId(null);
-      fetchSavingsByGoal();
+      fetchSavingsData();
     }
     setShowCustomInput(false);
     setCustomCategory('');
@@ -388,6 +337,40 @@ function TransactionPage() {
   const getGoalLabel = (goalId) => {
     const goalInfo = GOALS_OPTIONS.find(g => g.id === goalId);
     return goalInfo?.label || goalId;
+  };
+
+  const handleTopUpGeneral = async (amount) => {
+    const response = await api.post('/savings/topup', {
+      amount: amount,
+      date: new Date().toISOString().split('T')[0]
+    });
+    return response.data;
+  };
+
+  const handleTransferToGoal = async (amount, goalId, goalLabel) => {
+    const response = await api.post('/savings/allocate-to-goal', {
+      goalId: goalId,
+      amount: amount,
+      goalLabel: goalLabel
+    });
+    return response.data;
+  };
+
+  const handleWithdrawFromGoal = async (amount, goalId, goalLabel) => {
+    const response = await api.post('/savings/withdraw-from-goal', {
+      goalId: goalId,
+      amount: amount,
+      goalLabel: goalLabel
+    });
+    return response.data;
+  };
+
+  const handleWithdrawFromGeneral = async (amount) => {
+    const response = await api.post('/savings/withdraw', {
+      amount: amount,
+      date: new Date().toISOString().split('T')[0]
+    });
+    return response.data;
   };
 
   const handleSaveTransaction = async () => {
@@ -405,11 +388,11 @@ function TransactionPage() {
     }
 
     if (category === 'Tarik dari Tabungan' && !selectedWithdrawGoalId) {
-      showToast('Pilih target tabungan yang akan ditarik!', 'error');
+      showToast('Pilih sumber penarikan terlebih dahulu!', 'error');
       return;
     }
 
-    const balanceValidation = await validateBalance(numericAmount);
+    const balanceValidation = validateBalance(numericAmount);
     if (!balanceValidation.valid) {
       showToast(balanceValidation.message, 'error');
       return;
@@ -420,76 +403,122 @@ function TransactionPage() {
       return;
     }
 
-    let finalCategory = category;
-    let finalType = transactionType;
-    let finalDescription = '';
-
-    if (category === 'Transfer ke Tabungan') {
-      finalType = 'expense';
-      if (selectedGoalId) {
-        const goalLabel = getGoalLabel(selectedGoalId);
-        finalDescription = `TRANSFER_GOAL:${selectedGoalId}:${goalLabel}`;
-        if (note.trim()) finalDescription += `|${note.trim()}`;
-      } else {
-        finalDescription = `TRANSFER_GENERAL`;
-        if (note.trim()) finalDescription += `|${note.trim()}`;
-      }
-    } else if (category === 'Tarik dari Tabungan') {
-      finalType = 'income';
-      if (selectedWithdrawGoalId) {
-        const goalLabel = getGoalLabel(selectedWithdrawGoalId);
-        finalDescription = `WITHDRAW_GOAL:${selectedWithdrawGoalId}:${goalLabel}`;
-        if (note.trim()) finalDescription += `|${note.trim()}`;
-      } else {
-        finalDescription = `WITHDRAW_GENERAL`;
-        if (note.trim()) finalDescription += `|${note.trim()}`;
-      }
-    } else if (category === 'Lainnya' && customCategory.trim()) {
-      finalCategory = customCategory.trim();
-      finalDescription = note.trim() || finalCategory;
-    } else {
-      finalDescription = note.trim() || category;
-    }
-
-    if (transactionType === 'expense' && numericAmount > 5000000 && category !== 'Transfer ke Tabungan') {
+    if (transactionType === 'expense' && numericAmount > 5000000 && category !== 'Transfer ke Tabungan' && category !== 'Tarik dari Tabungan') {
       setShowConfirmDialog(true);
       return;
     }
 
-    await saveTransaction(numericAmount, finalCategory, finalType, finalDescription);
+    await saveTransaction(numericAmount);
   };
 
-  const saveTransaction = async (numericAmount, finalCategory, finalType, finalDescription) => {
+  const saveTransaction = async (numericAmount) => {
     setLoading(true);
     try {
-      console.log('📤 SAVING TRANSACTION:', {
-        type: finalType,
-        amount: numericAmount,
-        category: finalCategory,
-        description: finalDescription
-      });
-      
-      const response = await api.post('/transactions', {
-        type: finalType,
-        amount: numericAmount,
-        category: finalCategory,
-        description: finalDescription,
-        date: new Date().toISOString().split('T')[0]
-      });
-      
-      console.log('📥 RESPONSE:', response.data);
-      
-      if (response.data.success) {
-        showToast('Transaksi berhasil disimpan!', 'success');
-        await fetchAllData();
+      if (category === 'Transfer ke Tabungan') {
+        if (selectedGoalId) {
+          const goalLabel = getGoalLabel(selectedGoalId);
+          const res = await handleTransferToGoal(numericAmount, selectedGoalId, goalLabel);
+          if (res.success) {
+            showToast(`Berhasil transfer ke ${goalLabel}`, 'success');
+            await fetchAllData();
+            setAmountString('');
+            setNote('');
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 500);
+            return;
+          } else {
+            showToast(res.message || 'Gagal transfer', 'error');
+          }
+        } else {
+          const res = await handleTopUpGeneral(numericAmount);
+          if (res.success) {
+            showToast('Berhasil topup tabungan', 'success');
+            await fetchAllData();
+            setAmountString('');
+            setNote('');
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 500);
+            return;
+          } else {
+            showToast(res.message || 'Gagal topup', 'error');
+          }
+        }
+      } 
+      else if (category === 'Tarik dari Tabungan') {
+        if (selectedWithdrawGoalId) {
+          const goalLabel = getGoalLabel(selectedWithdrawGoalId);
+          const res = await handleWithdrawFromGoal(numericAmount, selectedWithdrawGoalId, goalLabel);
+          if (res.success) {
+            showToast(`Berhasil tarik dari ${goalLabel}`, 'success');
+            await fetchAllData();
+            setAmountString('');
+            setNote('');
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 500);
+            return;
+          } else {
+            showToast(res.message || 'Gagal tarik', 'error');
+          }
+        } else {
+          const res = await handleWithdrawFromGeneral(numericAmount);
+          if (res.success) {
+            showToast('Berhasil tarik dari tabungan umum', 'success');
+            await fetchAllData();
+            setAmountString('');
+            setNote('');
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 500);
+            return;
+          } else {
+            showToast(res.message || 'Gagal tarik', 'error');
+          }
+        }
+      }
+      else {
+        let finalCategory = category;
+        let finalDescription = note.trim() || category;
         
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1500);
+        if (category === 'Lainnya' && customCategory.trim()) {
+          finalCategory = customCategory.trim();
+          finalDescription = note.trim() || finalCategory;
+        }
+        
+        console.log('📤 Sending transaction:', {
+          type: transactionType,
+          amount: numericAmount,
+          category: finalCategory,
+          description: finalDescription,
+        });
+        
+        const apiResponse = await api.post('/transactions', {
+          type: transactionType,
+          amount: numericAmount,
+          category: finalCategory,
+          description: finalDescription,
+          date: new Date().toISOString().split('T')[0]
+        });
+        
+        console.log('📥 Response:', apiResponse.data);
+        
+        if (apiResponse.data && apiResponse.data.success === true) {
+          showToast('Transaksi berhasil disimpan!', 'success');
+          await fetchAllData();
+          setAmountString('');
+          setNote('');
+          
+          setTimeout(() => {
+            window.location.href = '/dashboard';
+          }, 500);
+        } else {
+          showToast(apiResponse.data?.message || 'Gagal menyimpan transaksi', 'error');
+        }
       }
     } catch (error) {
       console.error('❌ Error saving transaction:', error);
-      console.error('Response error data:', error.response?.data);
       showToast(error.response?.data?.message || 'Terjadi kesalahan', 'error');
     } finally {
       setLoading(false);
@@ -502,10 +531,19 @@ function TransactionPage() {
   const previewActiveBalance = (() => {
     if (!amountString || amountString === '0') return financialData.activeBalance;
     const amount = parseFloat(amountString);
-    if (category === 'Transfer ke Tabungan') return financialData.activeBalance - amount;
-    if (category === 'Tarik dari Tabungan') return financialData.activeBalance + amount;
-    if (transactionType === 'expense') return financialData.activeBalance - amount;
-    if (transactionType === 'income') return financialData.activeBalance + amount;
+    
+    if (category === 'Transfer ke Tabungan') {
+      return financialData.activeBalance - amount;
+    }
+    if (category === 'Tarik dari Tabungan') {
+      return financialData.activeBalance + amount;
+    }
+    if (transactionType === 'expense') {
+      return financialData.activeBalance - amount;
+    }
+    if (transactionType === 'income') {
+      return financialData.activeBalance + amount;
+    }
     return financialData.activeBalance;
   })();
   
@@ -518,18 +556,21 @@ function TransactionPage() {
   })();
 
   const isBalanceInsufficient = (() => {
+    if (!amountString || amountString === '0') return false;
+    const amount = parseFloat(amountString);
+    
+    if (transactionType === 'expense' && category !== 'Transfer ke Tabungan' && category !== 'Tarik dari Tabungan') {
+      return amount > financialData.activeBalance;
+    }
     if (category === 'Transfer ke Tabungan') {
-      return amountString && parseFloat(amountString) > financialData.activeBalance;
+      return amount > financialData.activeBalance;
     }
-    if (category === 'Tarik dari Tabungan') {
-      if (selectedWithdrawGoalId && amountString) {
-        const goalSavings = savingsByGoal[selectedWithdrawGoalId] || 0;
-        return parseFloat(amountString) > goalSavings;
-      }
-      return amountString && parseFloat(amountString) > financialData.savingsBalance;
+    if (category === 'Tarik dari Tabungan' && selectedWithdrawGoalId) {
+      const goalSavings = getGoalSavings(selectedWithdrawGoalId);
+      return amount > goalSavings;
     }
-    if (transactionType === 'expense') {
-      return amountString && parseFloat(amountString) > financialData.activeBalance;
+    if (category === 'Tarik dari Tabungan' && !selectedWithdrawGoalId) {
+      return amount > savingsData.generalBalance;
     }
     return false;
   })();
@@ -544,7 +585,7 @@ function TransactionPage() {
 
   const getCurrentGoalSavings = () => {
     if (!selectedWithdrawGoalId) return 0;
-    return savingsByGoal[selectedWithdrawGoalId] || 0;
+    return getGoalSavings(selectedWithdrawGoalId);
   };
 
   const getActiveCategoryStyle = () => {
@@ -552,6 +593,17 @@ function TransactionPage() {
     if (transactionType === 'expense') return 'bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700';
     return 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700';
   };
+
+  if (financialData.isLoading) {
+    return (
+      <div className={`min-h-screen ${bgColor} flex items-center justify-center`}>
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className={`text-sm ${textSecondary}`}>Memuat data keuangan...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen ${bgColor}`}>
@@ -603,7 +655,7 @@ function TransactionPage() {
               <button onClick={() => setShowConfirmDialog(false)} className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
                 Batal
               </button>
-              <button onClick={() => saveTransaction(parseFloat(amountString), category === 'Lainnya' && customCategory ? customCategory : category, transactionType, note.trim())} className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all">
+              <button onClick={() => saveTransaction(parseFloat(amountString))} className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-all">
                 Konfirmasi
               </button>
             </div>
@@ -638,6 +690,25 @@ function TransactionPage() {
                   <p className={`text-[10px] ${textSecondary}`}>
                     Minimal transaksi Rp 1.000. Transfer ke Tabungan untuk menabung, Tarik dari Tabungan untuk mengambil uang tabungan.
                   </p>
+                </div>
+              </div>
+
+              {/* TAMPILAN SALDO AKTIF SAAT INI */}
+              <div className={`${cardBg} rounded-xl border ${borderColor} p-4 mb-4 ${financialData.activeBalance >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-rose-50 dark:bg-rose-900/20'}`}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className={`text-xs ${textSecondary}`}>💰 Saldo Aktif Saat Ini</p>
+                    <p className={`text-xl font-bold ${financialData.activeBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {formatRupiah(financialData.activeBalance)}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={fetchFinancialData}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                    title="Refresh saldo"
+                  >
+                    <span className="material-symbols-outlined text-gray-500 text-sm">refresh</span>
+                  </button>
                 </div>
               </div>
 
@@ -687,36 +758,12 @@ function TransactionPage() {
                       </div>
                     )}
 
-                    {(category === 'Transfer ke Tabungan' || category === 'Tarik dari Tabungan') && amountString && amountString !== '0' && (
-                      <div className="mt-2">
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Tabungan setelah transaksi:</p>
-                        <p className={`text-sm font-semibold ${category === 'Transfer ke Tabungan' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                          {formatRupiah(previewSavingsBalance)}
-                        </p>
-                      </div>
-                    )}
-
-                    {category === 'Tarik dari Tabungan' && selectedWithdrawGoalId && amountString && amountString !== '0' && (
-                      <div className="mt-2">
-                        <p className={`text-[10px] ${textSecondary} mb-1`}>Saldo Target setelah tarik:</p>
-                        <p className={`text-sm font-semibold ${previewSavingsBalance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
-                          {formatRupiah(savingsByGoal[selectedWithdrawGoalId] - parseFloat(amountString))}
-                        </p>
-                      </div>
-                    )}
-
                     {isBalanceInsufficient && (
                       <div className="mt-3 p-2 bg-rose-50 dark:bg-rose-900/20 rounded-lg">
                         <p className="text-[10px] text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1">
                           <span className="material-symbols-outlined text-sm">warning</span>
                           Saldo tidak mencukupi!
                         </p>
-                      </div>
-                    )}
-                    
-                    {category === 'Tarik dari Tabungan' && selectedWithdrawGoalId && (
-                      <div className="mt-2 text-[10px] text-amber-600">
-                        Saldo target saat ini: {formatRupiah(getCurrentGoalSavings())}
                       </div>
                     )}
                   </div>
@@ -756,7 +803,7 @@ function TransactionPage() {
                             ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
                             : `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
                         }`}>
-                          Tanpa Target
+                          Tabungan Umum
                         </button>
                         {userGoals.map((goal) => {
                           const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
@@ -774,28 +821,31 @@ function TransactionPage() {
                     </div>
                   )}
 
-                  {category === 'Tarik dari Tabungan' && userGoals.length > 0 && (
+                  {category === 'Tarik dari Tabungan' && (
                     <div className={`${cardBg} rounded-xl border ${borderColor} p-4`}>
-                      <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Pilih Target yang Ditarik</p>
+                      <p className={`text-xs font-semibold ${textSecondary} mb-2`}>Pilih Sumber Penarikan</p>
                       <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => { setSelectedWithdrawGoalId(null); fetchSavingsData(); }} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                          selectedWithdrawGoalId === null
+                            ? 'bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700'
+                            : `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
+                        }`}>
+                          Tabungan Umum ({formatRupiah(savingsData.generalBalance)})
+                        </button>
                         {userGoals.map((goal) => {
                           const goalInfo = GOALS_OPTIONS.find(g => g.id === goal.id);
                           const goalLabel = goalInfo?.label || goal.label || goal.id;
+                          const goalSavings = getGoalSavings(goal.id);
                           return (
-                            <button key={goal.id} onClick={() => { setSelectedWithdrawGoalId(goal.id); fetchSavingsByGoal(); }} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                            <button key={goal.id} onClick={() => { setSelectedWithdrawGoalId(goal.id); fetchSavingsData(); }} className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
                               selectedWithdrawGoalId === goal.id ? 'bg-amber-600 text-white' : 
                               `${isDarkMode ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200'} border`
                             }`}>
-                              {goalLabel}
+                              {goalLabel} ({formatRupiah(goalSavings)})
                             </button>
                           );
                         })}
                       </div>
-                      {selectedWithdrawGoalId && (
-                        <p className="text-[10px] text-amber-600 mt-2">
-                          Saldo: {formatRupiah(getCurrentGoalSavings())}
-                        </p>
-                      )}
                     </div>
                   )}
 

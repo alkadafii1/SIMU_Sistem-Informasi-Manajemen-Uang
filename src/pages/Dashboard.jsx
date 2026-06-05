@@ -20,12 +20,13 @@ import AllocationChart from '../components/Dashboard/AllocationChart';
 import TopCategories from '../components/Dashboard/TopCategories';
 import WeeklyChart from '../components/Dashboard/WeeklyChart';
 import RecentTransactions from '../components/Dashboard/RecentTransactions';
+import api from '../services/api';
 
 function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const { setup, transactions, loading, dailyBudget, weeklyExpenses, refetchData } = useDashboardData(navigate);
+  const { setup, transactions, loading, refetchData } = useDashboardData(navigate);
   const { prediction: aiPrediction, loading: aiLoading, error: aiError, fetchPrediction, refreshPrediction } = useAIPrediction();
   const { showPopup: showWelcomePopup, progress: popupProgress, closePopup } = usePopup(location);
   const { isDarkMode, bgColor, cardBg, borderColor, textPrimary, textSecondary } = useThemeStyles();
@@ -33,6 +34,21 @@ function Dashboard() {
   const isOnline = useOnlineStatus();
   
   const [dashboardKey, setDashboardKey] = useState(0);
+  const [savingsData, setSavingsData] = useState({ generalBalance: 0, goals: [] });
+  const [savingsLoading, setSavingsLoading] = useState(true);
+  const [summaryData, setSummaryData] = useState({
+    totalIncome: 0,
+    totalExpense: 0,
+    savingsTransfers: 0,
+    savingsWithdraws: 0
+  });
+  const [categorySummary, setCategorySummary] = useState({
+    categoryTotals: [],
+    totalNeeds: 0,
+    totalWants: 0,
+    totalExpense: 0
+  });
+  const [weeklyExpensesFromApi, setWeeklyExpensesFromApi] = useState([0, 0, 0, 0, 0, 0, 0]);
   const aiFetchedRef = useRef(false);
 
   const userData = {
@@ -42,20 +58,89 @@ function Dashboard() {
   const userAvatar = localStorage.getItem('user_avatar');
   const userInitial = userData.name.charAt(0).toUpperCase();
 
+  // Fetch savings data dari tabel baru
+  const fetchSavingsData = useCallback(async () => {
+    try {
+      const response = await api.get('/savings/balance');
+      if (response.data.success) {
+        setSavingsData({
+          generalBalance: response.data.generalBalance,
+          goals: response.data.goals || []
+        });
+      }
+    } catch (error) {
+      console.error('Fetch savings error:', error);
+    } finally {
+      setSavingsLoading(false);
+    }
+  }, []);
+
+  // Fetch summary data (semua transaksi)
+  const fetchSummaryData = useCallback(async () => {
+    try {
+      const response = await api.get('/transactions/summary');
+      if (response.data.success) {
+        setSummaryData({
+          totalIncome: response.data.totalIncome,
+          totalExpense: response.data.totalExpense,
+          savingsTransfers: response.data.savingsTransfers,
+          savingsWithdraws: response.data.savingsWithdraws
+        });
+      }
+    } catch (error) {
+      console.error('Fetch summary error:', error);
+    }
+  }, []);
+
+  const fetchCategorySummary = useCallback(async () => {
+    try {
+      const response = await api.get('/transactions/summary-by-category');
+      if (response.data.success) {
+        setCategorySummary({
+          categoryTotals: response.data.categoryTotals,
+          totalNeeds: response.data.totalNeeds,
+          totalWants: response.data.totalWants,
+          totalExpense: response.data.totalExpense
+        });
+      }
+    } catch (error) {
+      console.error('Fetch category summary error:', error);
+    }
+  }, []);
+
+  // ✅ TAMBAH: Fetch weekly expenses
+  const fetchWeeklyExpenses = useCallback(async () => {
+    try {
+      const response = await api.get('/transactions/weekly');
+      if (response.data.success) {
+        setWeeklyExpensesFromApi(response.data.weeklyExpenses);
+      }
+    } catch (error) {
+      console.error('Fetch weekly expenses error:', error);
+    }
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     console.log('🔄 [Dashboard] Refreshing...');
     setDashboardKey(prev => prev + 1);
-    const result = await refetchData();
+    await Promise.all([refetchData(), fetchSavingsData(), fetchSummaryData(), fetchCategorySummary(), fetchWeeklyExpenses()]);
     console.log('✅ [Dashboard] Refresh done');
-    return result;
-  }, [refetchData]);
+  }, [refetchData, fetchSavingsData, fetchSummaryData, fetchCategorySummary, fetchWeeklyExpenses]);
 
+  // SEMUA useEffect HARUS DI SINI (sebelum conditional return)
   useEffect(() => {
     if (location.state?.refresh) {
       handleRefresh();
       navigate('/dashboard', { replace: true, state: {} });
     }
   }, [location.state, navigate, handleRefresh]);
+
+  useEffect(() => {
+    fetchSavingsData();
+    fetchSummaryData();
+    fetchCategorySummary();
+    fetchWeeklyExpenses(); // ← TAMBAHKAN
+  }, [fetchSavingsData, fetchSummaryData, fetchCategorySummary, fetchWeeklyExpenses]);
 
   useEffect(() => {
     if (setup?.income && !aiPrediction && !aiLoading && !aiFetchedRef.current) {
@@ -65,114 +150,36 @@ function Dashboard() {
     }
   }, [setup?.income, aiPrediction, aiLoading, fetchPrediction, transactions]);
 
-  if (loading && dashboardKey === 0) {
+  // CONDITIONAL RETURN (harus setelah semua Hook)
+  if ((loading || savingsLoading) && dashboardKey === 0) {
     return <Spinner fullScreen text="Memuat dashboard..." />;
   }
 
   if (!setup) return null;
 
-  // ========== HITUNG SALDO DASAR ==========
-  const totalIncome = transactions
-    .filter(t => t.type === 'income' && t.category !== 'Tarik dari Tabungan')
-    .reduce((sum, t) => sum + t.amount, 0);
+  // HITUNG SALDO AKTIF PAKAI SUMMARY DATA
+  const activeBalance = (setup.income + summaryData.totalIncome + summaryData.savingsWithdraws) - 
+                        (summaryData.totalExpense + summaryData.savingsTransfers);
   
-  const totalExpense = transactions
-    .filter(t => t.type === 'expense' && t.category !== 'Transfer ke Tabungan')
-    .reduce((sum, t) => sum + t.amount, 0);
+  // REKOMENDASI HARIAN (Daily Budget)
+  const today = new Date();
+  const currentDate = today.getDate();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const daysLeft = daysInMonth - currentDate;
+  const dailyBudgetCalc = daysLeft > 0 && activeBalance > 0 ? activeBalance / daysLeft : 0;
+
+  // SALDO DARI TABEL BARU
+  const unallocatedSavings = savingsData.generalBalance;
+  const totalSavingsBalance = savingsData.generalBalance + 
+    savingsData.goals.reduce((sum, g) => sum + (g.allocated_amount || 0), 0);
   
-  const savingsTransfers = transactions
-    .filter(t => t.category === 'Transfer ke Tabungan')
-    .reduce((sum, t) => sum + t.amount, 0);
-  
-  const savingsWithdraws = transactions
-    .filter(t => t.category === 'Tarik dari Tabungan')
-    .reduce((sum, t) => sum + t.amount, 0);
-  
-  const savingsBalance = savingsTransfers - savingsWithdraws;
-  const activeBalance = (setup.income + totalIncome + savingsWithdraws) - (totalExpense + savingsTransfers);
-  
-  // ========== HITUNG UNALLOCATED SAVINGS ==========
-  const allTransferToSavings = transactions.filter(t => 
-    t.type === 'expense' && t.category === 'Transfer ke Tabungan'
-  );
-  
-  const allocationsToGoals = allTransferToSavings.filter(t => 
-    t.description && (t.description.includes('Alokasi dari Tabungan Umum ke') || t.description.startsWith('TRANSFER_GOAL:'))
-  );
-  
-  const topUpToGeneral = allTransferToSavings.filter(t => 
-    !(t.description && (t.description.includes('Alokasi dari Tabungan Umum ke') || t.description.startsWith('TRANSFER_GOAL:')))
-  );
-  
-  const allWithdrawals = transactions.filter(t => 
-    t.type === 'income' && t.category === 'Tarik dari Tabungan'
-  );
-  
-  const withdrawFromGeneral = allWithdrawals.filter(t => 
-    t.description === 'WITHDRAW_GENERAL'
-  );
-  
-  const totalTopUpToGeneral = topUpToGeneral.reduce((sum, t) => sum + t.amount, 0);
-  const totalAllocatedToGoals = allocationsToGoals.reduce((sum, t) => sum + t.amount, 0);
-  const totalWithdrawFromGeneral = withdrawFromGeneral.reduce((sum, t) => sum + t.amount, 0);
-  
-  const unallocatedSavings = Math.max(0, totalTopUpToGeneral - totalWithdrawFromGeneral);
-  
-  // ========== HITUNG SAVINGS PER GOAL ==========
-  const savingsByGoal = {};
-  const selectedGoalIds = (setup.goals || []).filter(g => g.isSelected).map(g => g.id);
-  
-  selectedGoalIds.forEach(goalId => {
-    savingsByGoal[goalId] = 0;
-  });
-  
-  // Proses alokasi ke target
-  allocationsToGoals.forEach(tx => {
-    const description = tx.description || '';
-    const amount = tx.amount;
-    
-    // Cek format TRANSFER_GOAL:xxx
-    if (description.startsWith('TRANSFER_GOAL:')) {
-      const parts = description.split(':');
-      const goalId = parts[1];
-      if (selectedGoalIds.includes(goalId)) {
-        savingsByGoal[goalId] = (savingsByGoal[goalId] || 0) + amount;
-        console.log(`✅ Target ${goalId} mendapat TRANSFER_GOAL: +${amount}`);
-      }
-    }
-    // Cek format Alokasi dari Tabungan Umum ke
-    else if (description.includes('Alokasi dari Tabungan Umum ke')) {
-      for (const goalId of selectedGoalIds) {
-        const goalInfo = GOALS_OPTIONS.find(g => g.id === goalId);
-        const goalLabel = goalInfo?.label || goalId;
-        if (description.includes(goalLabel)) {
-          savingsByGoal[goalId] = (savingsByGoal[goalId] || 0) + amount;
-          console.log(`✅ Target ${goalLabel} mendapat alokasi: +${amount}`);
-          break;
-        }
-      }
-    }
-  });
-  
-  // Proses penarikan dari target
-  allWithdrawals.forEach(tx => {
-    const description = tx.description || '';
-    if (description.startsWith('WITHDRAW_GOAL:')) {
-      const parts = description.split(':');
-      const goalId = parts[1];
-      const amount = tx.amount;
-      if (selectedGoalIds.includes(goalId)) {
-        savingsByGoal[goalId] = Math.max(0, (savingsByGoal[goalId] || 0) - amount);
-        console.log(`✅ Target ${goalId} ditarik: -${amount}`);
-      }
-    }
-  });
-  
+  // HITUNG SAVINGS PER GOAL (dari tabel baru)
   const goalsData = (setup.goals || [])
     .filter(goal => goal.isSelected)
     .map(goal => {
       const originalGoal = GOALS_OPTIONS.find(g => g.id === goal.id);
-      const savedAmount = savingsByGoal[goal.id] || 0;
+      const savedFromAPI = savingsData.goals.find(g => g.goal_id === goal.id);
+      const savedAmount = savedFromAPI?.allocated_amount || 0;
       const targetAmount = goal.target || originalGoal?.defaultTarget || 100000000;
       const progress = targetAmount > 0 ? (savedAmount / targetAmount) * 100 : 0;
       
@@ -188,31 +195,24 @@ function Dashboard() {
     });
   
   console.log('📊 [Dashboard] ========== DEBUG ==========');
-  console.log('📊 Transfer ke Tabungan:', allTransferToSavings.length, 'transactions, total:', savingsTransfers);
-  console.log('📊   - Topup ke Umum:', topUpToGeneral.length, 'total:', totalTopUpToGeneral);
-  console.log('📊   - Alokasi ke Target:', allocationsToGoals.length, 'total:', totalAllocatedToGoals);
-  console.log('📊 Tarik dari Tabungan:', allWithdrawals.length, 'transactions, total:', savingsWithdraws);
-  console.log('📊   - Withdraw dari Umum:', withdrawFromGeneral.length, 'total:', totalWithdrawFromGeneral);
-  console.log('📊 unallocatedSavings:', unallocatedSavings);
+  console.log('📊 summaryData:', summaryData);
   console.log('📊 activeBalance:', activeBalance);
-  console.log('📊 goalsData:', goalsData.map(g => ({ label: g.label, saved: g.savedAmount, progress: g.progress })));
-  
-  const savingsAchieved = activeBalance;
+  console.log('📊 dailyBudget:', dailyBudgetCalc);
+  console.log('📊 unallocatedSavings:', unallocatedSavings);
+  console.log('📊 totalSavingsBalance:', totalSavingsBalance);
+  console.log('📊 weeklyExpenses:', weeklyExpensesFromApi);
 
+  // PERHITUNGAN UNTUK ALLOCATION CHART
   const budgetNeeds = (setup.income * setup.allocation.kebutuhan) / 100;
   const budgetWants = (setup.income * setup.allocation.keinginan) / 100;
   const budgetSavings = (setup.income * setup.allocation.tabungan) / 100;
 
-  const totalExpenseNeeds = transactions
-    .filter(t => t.type === 'expense' && NEEDS_CATEGORIES.includes(t.category))
-    .reduce((sum, t) => sum + t.amount, 0);
-  const totalExpenseWants = transactions
-    .filter(t => t.type === 'expense' && WANTS_CATEGORIES.includes(t.category))
-    .reduce((sum, t) => sum + t.amount, 0);
+  const totalExpenseNeeds = categorySummary.totalNeeds;
+  const totalExpenseWants = categorySummary.totalWants;
 
   const needsUsedPercent = budgetNeeds > 0 ? (totalExpenseNeeds / budgetNeeds) * 100 : 0;
   const wantsUsedPercent = budgetWants > 0 ? (totalExpenseWants / budgetWants) * 100 : 0;
-  const savingsPercent = budgetSavings > 0 ? (savingsBalance / budgetSavings) * 100 : 0;
+  const savingsPercent = budgetSavings > 0 ? (totalSavingsBalance / budgetSavings) * 100 : 0;
 
   const translatedWeekDays = Array.isArray(t('weekDays')) ? t('weekDays') : WEEK_DAYS;
 
@@ -286,10 +286,10 @@ function Dashboard() {
 
           <div className="flex-1 overflow-y-auto p-5 pb-24 md:pb-5 space-y-5 no-scrollbar">
             <SummaryCards
-              totalIncome={totalIncome}
-              totalExpense={totalExpense}
+              totalIncome={summaryData.totalIncome}
+              totalExpense={summaryData.totalExpense}
               activeBalance={activeBalance}
-              savingsBalance={savingsBalance}
+              savingsBalance={totalSavingsBalance}
               income={setup.income}
               savingsPercent={savingsPercent}
               formatRupiah={formatRupiah}
@@ -299,6 +299,7 @@ function Dashboard() {
               textSecondary={textSecondary}
               t={t}
               onNavigateToGoals={() => navigate('/goals-setting')}
+              isDarkMode={isDarkMode}
             />
 
             <AICard
@@ -326,7 +327,7 @@ function Dashboard() {
               <div>
                 <div className="text-[10px] font-medium text-amber-600 uppercase tracking-wide">💡 {t('dailyRecommendation')}</div>
                 <div className={`text-sm font-semibold ${textPrimary}`}>
-                  {t('dailyBudget')}: <span className="text-[#00685f]">{formatRupiah(Math.max(0, dailyBudget))}</span>
+                  {t('dailyBudget')}: <span className="text-[#00685f]">{formatRupiah(Math.max(0, dailyBudgetCalc))}</span>
                 </div>
               </div>
             </div>
@@ -341,7 +342,7 @@ function Dashboard() {
                 savingsPercent={savingsPercent}
                 totalExpenseNeeds={totalExpenseNeeds}
                 totalExpenseWants={totalExpenseWants}
-                savingsAchieved={savingsAchieved}
+                savingsAchieved={totalSavingsBalance}
                 budgetNeeds={budgetNeeds}
                 budgetWants={budgetWants}
                 budgetSavings={budgetSavings}
@@ -355,8 +356,8 @@ function Dashboard() {
               />
 
               <TopCategories
-                transactions={transactions}
-                totalExpense={totalExpense}
+                categoryTotals={categorySummary.categoryTotals}
+                totalExpense={categorySummary.totalExpense}
                 formatRupiah={formatRupiah}
                 onNavigate={() => navigate('/transaction')}
                 cardBg={cardBg}
@@ -386,7 +387,7 @@ function Dashboard() {
             />
 
             <WeeklyChart
-              weeklyExpenses={weeklyExpenses}
+              weeklyExpenses={weeklyExpensesFromApi}
               weekDays={translatedWeekDays}
               formatRupiah={formatRupiah}
               cardBg={cardBg}

@@ -47,7 +47,7 @@ const AllocationChart = ({
           </div>
         </div>
         
-        {/* Progress Bars - Gunakan t('needs'), t('wants'), t('savingsLabel') */}
+        {/* Progress Bars */}
         <div className="w-full space-y-3">
           <div>
             <div className="flex justify-between text-xs mb-1">
