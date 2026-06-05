@@ -1,6 +1,0 @@
-Link Dataset:
-https://www.kaggle.com/datasets/shriyashjagtap/indian-personal-finance-and-spending-habits
-
-Link Dashboard:
-https://financial-dashboard-cc26-psu171.streamlit.app/ 
-
